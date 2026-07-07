@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>정강정 Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        .date-time {
+            color: #999;
+            font-size: 12px;
+        }
+
+        /* ---- 기간 선택 탭 ---- */
+        .view-tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .view-tab {
+            flex: 1;
+            min-width: 70px;
+            padding: 10px 8px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.25);
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .view-tab:hover {
+            background: rgba(255,255,255,0.45);
+        }
+
+        .view-tab.active {
+            background: white;
+            color: #667eea;
+        }
+
+        /* ---- 비교 스트립 ---- */
+        .comparison-strip {
+            background: white;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .comparison-strip .diff-up { color: #e03131; font-weight: bold; }
+        .comparison-strip .diff-down { color: #1971c2; font-weight: bold; }
+        .comparison-strip .diff-flat { color: #999; font-weight: bold; }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .summary-card {
+            background: white;
+            padding: 12px 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        .summary-card h3 {
+            color: #999;
+            font-size: 11px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .summary-value {
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .summary-unit {
+            color: #bbb;
+            font-size: 12px;
+            margin-top: 3px;
+        }
+
+        .total-amount {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .total-amount .summary-value {
+            color: white;
+        }
+
+        .total-amount h3 {
+            color: rgba(255,255,255,0.9);
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        .chart-card h3 {
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .chart-card.wide {
+            grid-column: 1 / -1;
+        }
+
+        .day-charts {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .order-card.cancelled {
+            opacity: 0.55;
+            border-left-color: #999;
+        }
+
+        .cancel-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            background: #868e96;
+            white-space: nowrap;
+        }
+
+        .product-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 4px;
+            border-bottom: 1px solid #f2f2f2;
+            font-size: 13px;
+        }
+
+        .product-row:last-child {
+            border-bottom: none;
+        }
+
+        .product-name {
+            color: #444;
+        }
+
+        .product-count {
+            font-weight: bold;
+            color: #667eea;
+            white-space: nowrap;
+            margin-left: 8px;
+        }
+
+        @media (max-width: 900px) {
+            .day-charts {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .orders-section {
+            background: white;
+            padding: 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        .orders-section h2 {
+            margin-bottom: 12px;
+            color: #333;
+            font-size: 15px;
+        }
+
+        .order-card {
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            margin-bottom: 7px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .order-card.delivery {
+            border-left: 4px solid #ff6b6b;
+        }
+
+        .order-card.takeout {
+            border-left: 4px solid #4ecdc4;
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            cursor: pointer;
+            background: white;
+            transition: background 0.2s;
+        }
+
+        .order-header:hover {
+            background: #fafafa;
+        }
+
+        .order-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .order-type {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            white-space: nowrap;
+        }
+
+        .order-type.delivery {
+            background: #ff6b6b;
+        }
+
+        .order-type.takeout {
+            background: #4ecdc4;
+        }
+
+        .order-time-channel {
+            color: #777;
+            font-size: 12px;
+        }
+
+        .order-summary {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .order-amount {
+            font-size: 16px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: right;
+            min-width: 70px;
+        }
+
+        .order-toggle {
+            font-size: 14px;
+            color: #bbb;
+            transition: transform 0.2s;
+        }
+
+        .order-toggle.open {
+            transform: rotate(180deg);
+        }
+
+        .order-details {
+            background: #fafafa;
+            padding: 10px 12px;
+            display: none;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .order-details.open {
+            display: block;
+        }
+
+        .order-items {
+            background: white;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #f0f0f0;
+        }
+
+        .order-item {
+            padding: 5px 0;
+            color: #555;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #f5f5f5;
+        }
+
+        .order-item:last-child {
+            border-bottom: none;
+        }
+
+        .order-item-price {
+            font-weight: bold;
+            color: #667eea;
+            text-align: right;
+            min-width: 60px;
+        }
+
+        /* ---- 캘린더 ---- */
+        .cal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .cal-nav {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            color: #333;
+            font-size: 15px;
+        }
+
+        .cal-nav-btn {
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            padding: 5px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #667eea;
+        }
+
+        .cal-nav-btn:hover { background: #f6f5ff; }
+
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
+        .cal-dayname {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #999;
+            padding: 4px 0;
+        }
+
+        .cal-dayname.sun { color: #e03131; }
+
+        .cal-cell {
+            min-height: 58px;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 5px 6px;
+            font-size: 11px;
+        }
+
+        .cal-cell.empty { border: none; }
+
+        .cal-cell.closed { background: #fafafa; }
+
+        .cal-cell.has-data {
+            background: #f4f3ff;
+            border-color: #d6d2f5;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .cal-cell.has-data:hover { background: #e8e5fb; }
+
+        .cal-cell.today {
+            border: 2px solid #667eea;
+            cursor: pointer;
+        }
+
+        .cal-date {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 3px;
+        }
+
+        .cal-date.sun { color: #e03131; }
+
+        .cal-amt {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 13px;
+        }
+
+        .cal-cnt {
+            color: #aaa;
+            font-size: 10px;
+        }
+
+        .cal-month-total {
+            text-align: right;
+            margin-top: 10px;
+            color: #666;
+            font-size: 13px;
+        }
+
+        /* ---- 기록(아카이브) 리스트 ---- */
+        .history-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 11px 12px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: background 0.15s;
+            font-size: 13px;
+        }
+
+        .history-row:hover {
+            background: #f6f5ff;
+        }
+
+        .history-date {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .history-meta {
+            color: #999;
+            font-size: 12px;
+        }
+
+        .history-amount {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 15px;
+        }
+
+        /* ---- 통계 뷰 ---- */
+        .stats-month-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .empty-note {
+            text-align: center;
+            color: #aaa;
+            padding: 30px 0;
+            font-size: 13px;
+        }
+
+        .refresh-info {
+            text-align: center;
+            color: rgba(255,255,255,0.85);
+            font-size: 11px;
+            margin-top: 10px;
+        }
+
+        .refresh-info p {
+            margin: 0;
+        }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍗 정강정 Dashboard</h1>
+            <div class="date-time" id="dateTime"></div>
+        </header>
+
+        <!-- 기간 선택 탭 -->
+        <div class="view-tabs">
+            <button class="view-tab active" id="tab-today" onclick="showToday()">오늘</button>
+            <button class="view-tab" id="tab-yesterday" onclick="showYesterday()">어제</button>
+            <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
+            <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
+        </div>
+
+        <!-- 오늘 vs 어제 비교 -->
+        <div class="comparison-strip" id="comparisonStrip"></div>
+
+        <!-- 일별 뷰 (오늘/어제/특정 날짜) -->
+        <div id="dayView">
+            <div class="summary-grid">
+                <div class="summary-card total-amount">
+                    <h3>총 매출</h3>
+                    <div class="summary-value" id="totalAmount">0원</div>
+                </div>
+                <div class="summary-card">
+                    <h3>총 주문 건수</h3>
+                    <div class="summary-value" id="totalOrders">0건</div>
+                </div>
+                <div class="summary-card">
+                    <h3>포장 주문</h3>
+                    <div class="summary-value" id="takeoutOrders">0건</div>
+                    <div class="summary-unit" id="takeoutAmount">0원</div>
+                </div>
+                <div class="summary-card">
+                    <h3>배달 주문</h3>
+                    <div class="summary-value" id="deliveryOrders">0건</div>
+                    <div class="summary-unit" id="deliveryAmount">0원</div>
+                </div>
+                <div class="summary-card">
+                    <h3>평균 객단가</h3>
+                    <div class="summary-value" id="avgOrderValue">0원</div>
+                    <div class="summary-unit">주문 1건당 평균</div>
+                </div>
+            </div>
+
+            <div class="charts-grid day-charts">
+                <div class="chart-card">
+                    <h3>포장 vs 배달</h3>
+                    <canvas id="typeChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>채널별 매출</h3>
+                    <canvas id="channelChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>상품별 판매량</h3>
+                    <div id="productList"></div>
+                </div>
+            </div>
+
+            <div class="orders-section">
+                <h2 id="ordersTitle">📋 오늘의 주문 현황</h2>
+                <div id="ordersList"></div>
+            </div>
+        </div>
+
+        <!-- 기록 뷰 (달력) -->
+        <div id="historyView" class="hidden">
+            <div class="orders-section">
+                <div class="cal-header">
+                    <h2>🗓️ 일별 매출 기록 (날짜 클릭 → 상세)</h2>
+                    <div class="cal-nav">
+                        <button class="cal-nav-btn" onclick="calMove(-1)">◀</button>
+                        <span id="calTitle"></span>
+                        <button class="cal-nav-btn" onclick="calMove(1)">▶</button>
+                    </div>
+                </div>
+                <div id="calendarBox"></div>
+            </div>
+        </div>
+
+        <!-- 통계 뷰 -->
+        <div id="statsView" class="hidden">
+            <div class="charts-grid">
+                <div class="chart-card wide">
+                    <h3>📈 일별 매출 추이 (최근 14일)</h3>
+                    <canvas id="trendChart" height="90"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>주별 매출</h3>
+                    <canvas id="weeklyChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>월별 매출</h3>
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+            <div class="orders-section" style="margin-top: 12px;">
+                <h2>📅 월별 매출</h2>
+                <div id="monthList"></div>
+            </div>
+        </div>
+
+        <div class="refresh-info">
+            <p>⏱️ 실시간 자동 갱신 | 마지막 업데이트: <span id="lastUpdate">-</span></p>
+        </div>
+    </div>
+
+    <script>
+        // ===== 전역 상태 =====
+        let currentMode = 'today';          // 'today' | 'date' | 'history' | 'stats'
+        let currentDate = null;             // 'date' 모드일 때 대상 날짜
+        let renderSeq = 0;                  // 렌더 경쟁 방지 토큰 (탭 빠른 전환 시)
+        const chartInstances = {};          // canvas id -> Chart (재생성 시 destroy)
+
+        // ===== 유틸 =====
+        function fmtDate(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function ymd(dateStr) { return dateStr.replace(/-/g, ''); }
+
+        function todayStr() { return fmtDate(new Date()); }
+
+        function yesterdayStr() {
+            const d = new Date();
+            d.setDate(d.getDate() - 1);
+            return fmtDate(d);
+        }
+
+        async function loadJson(url) {
+            try {
+                const response = await fetch(url + '?t=' + Date.now());
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return await response.json();
+            } catch (error) {
+                console.error('로드 실패:', url, error);
+                return null;
+            }
+        }
+
+        function drawChart(canvasId, config) {
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].destroy();
+            }
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            chartInstances[canvasId] = new Chart(ctx, config);
+        }
+
+        function setActiveTab(tabId) {
+            document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        function showView(viewId) {
+            ['dayView', 'historyView', 'statsView'].forEach(id => {
+                document.getElementById(id).classList.toggle('hidden', id !== viewId);
+            });
+        }
+
+        // ===== 데이터 로드 =====
+        async function loadDayData(dateStr) {
+            if (dateStr === todayStr()) {
+                return await loadJson('./processed/orders_latest.json');
+            }
+            return await loadJson(`./processed/archive/${dateStr}/orders_${ymd(dateStr)}.json`);
+        }
+
+        async function loadDaySummary(dateStr) {
+            if (dateStr === todayStr()) {
+                const d = await loadJson('./processed/orders_latest.json');
+                return d ? d.summary : null;
+            }
+            return await loadJson(`./processed/archive/${dateStr}/summary.json`);
+        }
+
+        // ===== 비교 스트립 =====
+        async function renderComparison(baseDateStr, baseSummary, myToken) {
+            const strip = document.getElementById('comparisonStrip');
+            // 비교 대상: 하루 전 (아카이브에서)
+            const prev = new Date(baseDateStr);
+            prev.setDate(prev.getDate() - 1);
+            const prevStr = fmtDate(prev);
+            const prevSummary = await loadJson(`./processed/archive/${prevStr}/summary.json`);
+            if (myToken !== undefined && myToken !== renderSeq) return;
+
+            if (!baseSummary || !prevSummary) {
+                strip.innerHTML = `<span>📊 비교할 전일 데이터가 없습니다</span>`;
+                return;
+            }
+
+            const cur = baseSummary.total_amount || 0;
+            const before = prevSummary.total_amount || 0;
+            let diffHtml;
+            if (before === 0) {
+                diffHtml = '<span class="diff-flat">-</span>';
+            } else {
+                const pct = ((cur - before) / before * 100).toFixed(1);
+                if (cur > before) diffHtml = `<span class="diff-up">▲ +${pct}%</span>`;
+                else if (cur < before) diffHtml = `<span class="diff-down">▼ ${pct}%</span>`;
+                else diffHtml = '<span class="diff-flat">— 0%</span>';
+            }
+
+            const label = baseDateStr === todayStr() ? '오늘' : baseDateStr;
+            strip.innerHTML = `
+                <span><b>${label}</b> ${cur.toLocaleString()}원 (${baseSummary.total_orders || 0}건)</span>
+                <span>vs</span>
+                <span><b>전일(${prevStr})</b> ${before.toLocaleString()}원 (${prevSummary.total_orders || 0}건)</span>
+                <span>${diffHtml}</span>
+            `;
+        }
+
+        // ===== 일별 뷰 렌더링 =====
+        function toggleOrder(index) {
+            const details = document.getElementById(`details-${index}`);
+            const toggle = document.getElementById(`toggle-${index}`);
+            details.classList.toggle('open');
+            toggle.classList.toggle('open');
+        }
+
+        async function renderDay(dateStr) {
+            const myToken = ++renderSeq;
+            const data = await loadDayData(dateStr);
+            if (myToken !== renderSeq) return; // 더 최근 요청이 있으면 이 결과는 버림
+
+            if (!data) {
+                document.getElementById('lastUpdate').textContent = '⚠️ 데이터 로드 실패';
+                document.getElementById('ordersList').innerHTML =
+                    '<div class="empty-note">해당 날짜의 데이터가 없습니다</div>';
+                document.getElementById('comparisonStrip').innerHTML =
+                    '<span>데이터 없음</span>';
+                return;
+            }
+
+            const summary = data.summary || {};
+            const orders = (data.orders || []).map(o => ({
+                ...o,
+                menus: o.items || o.menus || []
+            }));
+            const activeOrders = orders.filter(o => !o.cancelled); // 취소 건 제외한 유효 주문
+
+            const isToday = dateStr === todayStr();
+            document.getElementById('ordersTitle').textContent =
+                isToday ? '📋 오늘의 주문 현황' : `📋 ${dateStr} 주문 내역`;
+            document.getElementById('dateTime').textContent =
+                `${data.date} | 업데이트: ${new Date(data.timestamp).toLocaleTimeString('ko-KR')}`;
+            document.getElementById('lastUpdate').textContent =
+                new Date(data.timestamp).toLocaleTimeString('ko-KR');
+
+            const totalAmount = summary.total_amount || 0;
+            const takeoutCount = summary.takeout_count || 0;
+            const takeoutAmount = summary.takeout_amount || 0;
+            const deliveryCount = summary.delivery_count || 0;
+            const deliveryAmount = summary.delivery_amount || 0;
+
+            document.getElementById('totalAmount').textContent = totalAmount.toLocaleString() + '원';
+            document.getElementById('totalOrders').textContent = (summary.total_orders || 0) + '건';
+            document.getElementById('takeoutOrders').textContent = takeoutCount + '건';
+            document.getElementById('takeoutAmount').textContent = takeoutAmount.toLocaleString() + '원';
+            document.getElementById('deliveryOrders').textContent = deliveryCount + '건';
+            document.getElementById('deliveryAmount').textContent = deliveryAmount.toLocaleString() + '원';
+
+            // 평균 객단가
+            const orderCount = summary.total_orders || 0;
+            const avgValue = orderCount > 0 ? Math.round(totalAmount / orderCount) : 0;
+            document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
+
+            // 채널별 차트 (취소 건 제외)
+            const channels = {};
+            const channelCounts = {};
+            activeOrders.forEach(order => {
+                channels[order.channel] = (channels[order.channel] || 0) + order.amount;
+                channelCounts[order.channel] = (channelCounts[order.channel] || 0) + 1;
+            });
+
+            const channelLabels = Object.keys(channels).map(ch => {
+                const pct = totalAmount > 0 ? ((channels[ch] / totalAmount) * 100).toFixed(1) : 0;
+                return `${ch} ${pct}% (${channelCounts[ch]}건)`;
+            });
+
+            drawChart('channelChart', {
+                type: 'doughnut',
+                data: {
+                    labels: channelLabels,
+                    datasets: [{
+                        data: Object.values(channels),
+                        backgroundColor: ['#667eea', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#a55eea']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.label}: ${(ctx.parsed || 0).toLocaleString()}원`
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 포장 vs 배달 차트
+            const tPct = totalAmount > 0 ? ((takeoutAmount / totalAmount) * 100).toFixed(1) : 0;
+            const dPct = totalAmount > 0 ? ((deliveryAmount / totalAmount) * 100).toFixed(1) : 0;
+            drawChart('typeChart', {
+                type: 'doughnut',
+                data: {
+                    labels: [`포장 ${tPct}% (${takeoutCount}건)`, `배달 ${dPct}% (${deliveryCount}건)`],
+                    datasets: [{
+                        data: [takeoutAmount, deliveryAmount],
+                        backgroundColor: ['#4ecdc4', '#ff6b6b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${(ctx.parsed || 0).toLocaleString()}원`
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 상품별 판매 갯수 목록 (메인 메뉴만, 판매량 많은 순)
+            const EXCLUDED_CATEGORIES = ['사이드', '음료', '하부메뉴', '테스트'];
+            const products = {};
+            activeOrders.forEach(order => {
+                (order.menus || []).forEach(menu => {
+                    if (menu.is_option) return; // 옵션/구성품 제외
+                    if (menu.category && EXCLUDED_CATEGORIES.indexOf(menu.category) !== -1) return; // 사이드/음료 제외
+                    products[menu.name] = (products[menu.name] || 0) + (menu.qty || 1);
+                });
+            });
+            const productNames = Object.keys(products)
+                .sort((a, b) => products[b] - products[a]);
+
+            const productList = document.getElementById('productList');
+            if (productNames.length === 0) {
+                productList.innerHTML = '<div class="empty-note">판매 내역이 없습니다</div>';
+            } else {
+                productList.innerHTML = productNames.map(p => `
+                    <div class="product-row">
+                        <span class="product-name">${p}</span>
+                        <span class="product-count">${products[p]}개</span>
+                    </div>
+                `).join('');
+            }
+
+            // 주문 목록
+            const ordersList = document.getElementById('ordersList');
+            if (orders.length === 0) {
+                ordersList.innerHTML = '<div class="empty-note">아직 주문이 없습니다</div>';
+            } else {
+                ordersList.innerHTML = orders.map((order, index) => `
+                    <div class="order-card ${order.type}${order.cancelled ? ' cancelled' : ''}">
+                        <div class="order-header" onclick="toggleOrder(${index})">
+                            <div class="order-header-left">
+                                <span class="order-type ${order.type}">
+                                    ${order.type === 'delivery' ? '🚗 배달' : '🏪 포장'}
+                                </span>
+                                ${order.cancelled ? '<span class="cancel-badge">❌ 취소</span>' : ''}
+                                <span class="order-time-channel">
+                                    ${order.channel} • ${order.time}
+                                </span>
+                            </div>
+                            <div class="order-summary">
+                                <div class="order-amount">${order.cancelled ? '<s>' + order.amount.toLocaleString() + '원</s>' : order.amount.toLocaleString() + '원'}</div>
+                                <div class="order-toggle" id="toggle-${index}">▼</div>
+                            </div>
+                        </div>
+                        <div class="order-details" id="details-${index}">
+                            <div class="order-items">
+                                ${order.menus.map(menu => `
+                                    <div class="order-item" ${menu.is_option ? 'style="color:#999;"' : ''}>
+                                        <span>${menu.name}${(menu.qty || 1) > 1 ? ' ×' + menu.qty : ''}</span>
+                                        <span class="order-item-price">${menu.is_option ? ((menu.price || 0) > 0 ? '+' + menu.price.toLocaleString() + '원' : '') : (menu.price || 0).toLocaleString() + '원'}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // 비교 스트립
+            renderComparison(dateStr, summary, myToken);
+        }
+
+        // ===== 기록 뷰 (달력) =====
+        let calMonth = null;          // 표시 중인 달 (매월 1일 Date)
+        let archiveByDate = {};       // date -> summary
+
+        async function renderHistory() {
+            const index = await loadJson('./processed/archive/archive_index.json');
+            archiveByDate = {};
+            (index || []).forEach(d => { archiveByDate[d.date] = d; });
+            if (!calMonth) {
+                const t = new Date();
+                calMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+            }
+            drawCalendar();
+        }
+
+        function calMove(delta) {
+            calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + delta, 1);
+            drawCalendar();
+        }
+
+        function drawCalendar() {
+            const y = calMonth.getFullYear();
+            const m = calMonth.getMonth();
+            document.getElementById('calTitle').textContent = y + '년 ' + (m + 1) + '월';
+
+            const firstDow = new Date(y, m, 1).getDay();
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const today = todayStr();
+
+            let html = '<div class="cal-grid">';
+            dayNames.forEach((d, i) => {
+                html += `<div class="cal-dayname${i === 0 ? ' sun' : ''}">${d}</div>`;
+            });
+            for (let i = 0; i < firstDow; i++) html += '<div class="cal-cell empty"></div>';
+
+            let monthTotal = 0;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const ds = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+                const rec = archiveByDate[ds];
+                const dow = new Date(y, m, d).getDay();
+                const sunCls = dow === 0 ? ' sun' : '';
+
+                if (rec) {
+                    monthTotal += rec.total_amount || 0;
+                    html += `
+                        <div class="cal-cell has-data" onclick="showDate('${ds}')">
+                            <div class="cal-date${sunCls}">${d}</div>
+                            <div class="cal-amt">${((rec.total_amount || 0) / 10000).toFixed(1)}만</div>
+                            <div class="cal-cnt">${rec.total_orders}건</div>
+                        </div>`;
+                } else if (ds === today) {
+                    html += `
+                        <div class="cal-cell today" onclick="showToday()">
+                            <div class="cal-date${sunCls}">${d}</div>
+                            <div class="cal-amt">오늘</div>
+                        </div>`;
+                } else {
+                    html += `<div class="cal-cell closed"><div class="cal-date${sunCls}">${d}</div></div>`;
+                }
+            }
+            html += '</div>';
+            html += `<div class="cal-month-total">이 달 합계: <b>${monthTotal.toLocaleString()}원</b></div>`;
+            document.getElementById('calendarBox').innerHTML = html;
+        }
+
+        // ===== 통계 뷰 =====
+        async function renderStats() {
+            const monthly = await loadJson('./processed/monthly_summary.json');
+            const index = await loadJson('./processed/archive/archive_index.json');
+
+            const monthList = document.getElementById('monthList');
+            if (!monthly) {
+                monthList.innerHTML = '<div class="empty-note">통계 데이터가 없습니다</div>';
+                return;
+            }
+
+            // 월별 매출 목록 (최신 월이 위로)
+            const months = Object.keys(monthly).sort();
+            monthList.innerHTML = [...months].reverse().map(m => {
+                const dayCount = Object.keys(monthly[m].daily_breakdown || {}).length;
+                const avg = dayCount > 0 ? Math.round(monthly[m].month_total / dayCount) : 0;
+                return `
+                    <div class="history-row">
+                        <div>
+                            <span class="history-date">${m}</span>
+                            <span class="history-meta"> · ${monthly[m].orders_count}건 · 영업 ${dayCount}일 · 일평균 ${avg.toLocaleString()}원</span>
+                        </div>
+                        <div class="history-amount">${monthly[m].month_total.toLocaleString()}원</div>
+                    </div>
+                `;
+            }).join('');
+
+            // 일별 추이 (최근 14일, 아카이브 + 오늘)
+            let daily = [];
+            if (index) {
+                daily = [...index].sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+            }
+            const todayData = await loadJson('./processed/orders_latest.json');
+            if (todayData && todayData.summary) {
+                daily.push({ date: todayData.date, total_amount: todayData.summary.total_amount });
+            }
+
+            drawChart('trendChart', {
+                type: 'line',
+                data: {
+                    labels: daily.map(d => d.date.substring(5)),
+                    datasets: [{
+                        label: '일 매출 (원)',
+                        data: daily.map(d => d.total_amount),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102,126,234,0.15)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` }
+                        }
+                    },
+                    scales: {
+                        y: { ticks: { callback: v => (v / 10000) + '만' } }
+                    }
+                }
+            });
+
+            // 주별 매출 (모든 달의 weekly_totals 합침)
+            const weekly = {};
+            months.forEach(m => {
+                const wt = monthly[m].weekly_totals || {};
+                Object.keys(wt).forEach(w => {
+                    weekly[w] = (weekly[w] || 0) + wt[w];
+                });
+            });
+            const weekKeys = Object.keys(weekly).sort((a, b) =>
+                parseInt(a.replace('week_', '')) - parseInt(b.replace('week_', '')));
+
+            drawChart('weeklyChart', {
+                type: 'bar',
+                data: {
+                    labels: weekKeys.map(w => w.replace('week_', '') + '주차'),
+                    datasets: [{
+                        label: '주 매출',
+                        data: weekKeys.map(w => weekly[w]),
+                        backgroundColor: '#4ecdc4'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                    },
+                    scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
+                }
+            });
+
+            // 월별 매출
+            drawChart('monthlyChart', {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: '월 매출',
+                        data: months.map(m => monthly[m].month_total),
+                        backgroundColor: '#667eea'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                    },
+                    scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
+                }
+            });
+        }
+
+        // ===== 탭 핸들러 =====
+        function showToday() {
+            currentMode = 'today';
+            setActiveTab('tab-today');
+            showView('dayView');
+            document.getElementById('comparisonStrip').classList.remove('hidden');
+            renderDay(todayStr());
+        }
+
+        function showYesterday() {
+            showDate(yesterdayStr(), 'tab-yesterday');
+        }
+
+        function showDate(dateStr, tabId) {
+            currentMode = 'date';
+            currentDate = dateStr;
+            setActiveTab(tabId || 'tab-history');
+            showView('dayView');
+            document.getElementById('comparisonStrip').classList.remove('hidden');
+            renderDay(dateStr);
+        }
+
+        function showHistory() {
+            currentMode = 'history';
+            setActiveTab('tab-history');
+            showView('historyView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderHistory();
+        }
+
+        function showStats() {
+            currentMode = 'stats';
+            setActiveTab('tab-stats');
+            showView('statsView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderStats();
+        }
+
+        // ===== 초기 로드 + 자동 갱신 =====
+        let lastDataSignature = null;
+        showToday();
+
+        setInterval(async () => {
+            // '오늘' 화면일 때만, 그리고 데이터가 실제로 바뀌었을 때만 다시 그림
+            if (currentMode !== 'today') return;
+            const data = await loadJson('./processed/orders_latest.json');
+            if (!data) return;
+            const sig = JSON.stringify(data.orders) + '|' + JSON.stringify(data.summary);
+            if (sig !== lastDataSignature) {
+                lastDataSignature = sig;
+                renderDay(todayStr());
+            }
+        }, 10000);
+    </script>
+<script>
+// ===== GitHub Pages 원격 모드: 암호화된 데이터(.enc)를 비밀번호로 복호화 =====
+async function getDashKeyIv(saltBytes) {
+    let pw = sessionStorage.getItem('dashpw');
+    if (!pw) {
+        pw = prompt('대시보드 비밀번호를 입력하세요');
+        if (!pw) throw new Error('비밀번호 없음');
+        sessionStorage.setItem('dashpw', pw);
+    }
+    const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt: saltBytes, iterations: 50000, hash: 'SHA-256' }, baseKey, 384);
+    const buf = new Uint8Array(bits);
+    return { key: buf.slice(0, 32), iv: buf.slice(32, 48) };
+}
+
+loadJson = async function(url) {
+    try {
+        const encUrl = url.replace(/\.json$/, '.enc');
+        const resp = await fetch(encUrl + '?t=' + Date.now());
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = new Uint8Array(await resp.arrayBuffer());
+        const salt = data.slice(0, 16);
+        const ct = data.slice(16);
+        try {
+            const ki = await getDashKeyIv(salt);
+            const aesKey = await crypto.subtle.importKey('raw', ki.key, 'AES-CBC', false, ['decrypt']);
+            const plain = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ki.iv }, aesKey, ct);
+            return JSON.parse(new TextDecoder().decode(plain));
+        } catch (e) {
+            // 비밀번호가 틀리면 지우고 다시 물어봄
+            sessionStorage.removeItem('dashpw');
+            alert('비밀번호가 틀렸습니다. 다시 입력해주세요.');
+            return loadJson(url);
+        }
+    } catch (error) {
+        console.error('로드 실패:', url, error);
+        return null;
+    }
+};
+
+// 원격 모드로 처음부터 다시 렌더링
+showToday();
+</script>
+</body>
+</html>
