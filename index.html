@@ -1095,11 +1095,21 @@
                         .trim();
             }
             const products = {};
+            // 매장 공통상품("닭강정 N마리")을 맛 옵션에 따라 배달앱 상품명과 통일
+            const FLAVOR_MAP = [
+                [/매콤\s*간장/, '매콤간장닭강정'],
+                [/매콤/, '매콤양념닭강정'],
+                [/달콤/, '달콤양념닭강정'],
+                [/후라이드/, '순살 후라이드']
+            ];
+
             activeOrders.forEach(order => {
                 const menus = order.menus || [];
                 // 이 주문의 마리 수 옵션 찾기 (예: "한마리(2인)")
                 const sizeOpt = menus.find(m => m.is_option && SIZE_RE.test(m.name));
                 const size = sizeOpt ? sizeOpt.name.match(SIZE_RE)[1] : null;
+                // 이 주문의 맛 옵션 찾기 (달콤 양념 / 매콤 양념 / 매콤 간장 / 후라이드)
+                const flavorOpt = menus.find(m => m.is_option && /매콤|달콤|후라이드/.test(m.name));
 
                 menus.forEach(menu => {
                     if (menu.is_option) return;
@@ -1107,6 +1117,18 @@
                     if (EXCLUDE_NAME.test(menu.name)) return;
 
                     let name = normalizeName(menu.name);
+
+                    // 매장 등록명 "닭강정 반마리/한마리/두마리" -> 맛 옵션 기준으로 배달앱 이름과 통일
+                    const generic = name.match(/^닭강정\s*(반마리|한마리|두마리)?$/);
+                    if (generic && flavorOpt) {
+                        for (const fm of FLAVOR_MAP) {
+                            if (fm[0].test(flavorOpt.name)) {
+                                name = fm[1] + (generic[1] ? ' ' + generic[1] : '');
+                                break;
+                            }
+                        }
+                    }
+
                     // 마리 수 옵션을 메인 메뉴(사이드 제외) 이름에 반영
                     if (size && menu.category !== '사이드') {
                         if (SIZE_RE.test(name)) name = name.replace(SIZE_RE, size);
