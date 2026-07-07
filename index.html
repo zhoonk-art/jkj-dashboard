@@ -712,6 +712,7 @@
                 <div class="summary-card total-amount">
                     <h3>총 매출</h3>
                     <div class="summary-value" id="totalAmount">0원</div>
+                    <div class="summary-unit" id="dayNet" style="color: rgba(255,255,255,0.85);"></div>
                 </div>
                 <div class="summary-card">
                     <h3>총 주문 건수</h3>
@@ -1010,6 +1011,14 @@
             const orderCount = summary.total_orders || 0;
             const avgValue = orderCount > 0 ? Math.round(totalAmount / orderCount) : 0;
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
+
+            // 총매출 카드에 실수령(수수료 차감) 병기
+            loadFees().then(() => {
+                let netSum = 0;
+                activeOrders.forEach(o => { netSum += orderNet(o).net; });
+                document.getElementById('dayNet').textContent =
+                    activeOrders.length > 0 ? `실수령 약 ${netSum.toLocaleString()}원` : '';
+            });
 
             // 채널별 차트 (취소 건 제외)
             const channels = {};
@@ -1340,6 +1349,119 @@
             });
         }
 
+        // ===== 순익 (수수료 차감 실수령) =====
+        const FEE_CHANNELS = ['배달의민족', '배달의민족(가게배달)', '쿠팡이츠', '요기요', '네이버주문', '땡겨요', '포장(매장)'];
+        let feesConfig = null;
+
+        async function loadFees() {
+            if (!feesConfig) {
+                feesConfig = await loadJson('./processed/fees.json');
+            }
+            return feesConfig;
+        }
+
+        function feeFor(channel) {
+            const ch = (feesConfig && feesConfig.channels && feesConfig.channels[channel]) || null;
+            return { percent: ch ? (ch.percent || 0) : 0, fixed: ch ? (ch.fixed || 0) : 0 };
+        }
+
+        function orderNet(order) {
+            const f = feeFor(order.channel);
+            const fee = Math.round(order.amount * f.percent / 100) + f.fixed;
+            return { fee: fee, net: order.amount - fee };
+        }
+
+        async function renderProfit() {
+            await loadFees();
+            const data = await loadJson('./processed/orders_latest.json');
+            if (!data) return;
+
+            const orders = (data.orders || []).filter(o => !o.cancelled);
+
+            // 채널별 집계
+            const rows = {};
+            let gross = 0, totalFee = 0;
+            orders.forEach(o => {
+                const r = orderNet(o);
+                gross += o.amount;
+                totalFee += r.fee;
+                if (!rows[o.channel]) rows[o.channel] = { count: 0, gross: 0, fee: 0, net: 0 };
+                rows[o.channel].count++;
+                rows[o.channel].gross += o.amount;
+                rows[o.channel].fee += r.fee;
+                rows[o.channel].net += r.net;
+            });
+            const net = gross - totalFee;
+
+            document.getElementById('profitNet').textContent = net.toLocaleString() + '원';
+            document.getElementById('profitNetSub').textContent = `매출의 ${gross > 0 ? (net / gross * 100).toFixed(1) : 0}%`;
+            document.getElementById('profitGross').textContent = gross.toLocaleString() + '원';
+            document.getElementById('profitFees').textContent = '-' + totalFee.toLocaleString() + '원';
+            document.getElementById('profitFeeRate').textContent = gross > 0 ? `평균 수수료율 ${(totalFee / gross * 100).toFixed(1)}%` : '';
+
+            // 채널 테이블
+            const chNames = Object.keys(rows).sort((a, b) => rows[b].gross - rows[a].gross);
+            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>수수료</th><th>실수령</th></tr>';
+            chNames.forEach(ch => {
+                const r = rows[ch];
+                const f = feeFor(ch);
+                html += `<tr>
+                    <td>${ch} <span style="color:#bbb;font-size:11px;">(${f.percent}%${f.fixed ? '+' + f.fixed.toLocaleString() + '원' : ''})</span></td>
+                    <td>${r.count}건</td>
+                    <td>${r.gross.toLocaleString()}원</td>
+                    <td class="fee-cell">-${r.fee.toLocaleString()}원</td>
+                    <td class="net-cell">${r.net.toLocaleString()}원</td>
+                </tr>`;
+            });
+            html += `<tr class="total-row">
+                <td>합계</td><td>${orders.length}건</td>
+                <td>${gross.toLocaleString()}원</td>
+                <td class="fee-cell">-${totalFee.toLocaleString()}원</td>
+                <td class="net-cell">${net.toLocaleString()}원</td>
+            </tr>`;
+            document.getElementById('feeTable').innerHTML = html;
+
+            // 설정 폼
+            const settings = document.getElementById('feeSettings');
+            settings.innerHTML = FEE_CHANNELS.map(ch => {
+                const f = feeFor(ch);
+                return `
+                    <div class="fee-setting-row">
+                        <label>${ch}</label>
+                        <input type="number" step="0.1" min="0" id="fee-pct-${ch}" value="${f.percent}"> <span class="unit">%</span>
+                        <input type="number" step="100" min="0" id="fee-fix-${ch}" value="${f.fixed}"> <span class="unit">원/건</span>
+                    </div>`;
+            }).join('');
+        }
+
+        async function saveFees() {
+            const msg = document.getElementById('saveMsg');
+            const channels = {};
+            FEE_CHANNELS.forEach(ch => {
+                channels[ch] = {
+                    percent: parseFloat(document.getElementById('fee-pct-' + ch).value) || 0,
+                    fixed: parseInt(document.getElementById('fee-fix-' + ch).value) || 0
+                };
+            });
+            const payload = { note: "percent = 수수료율(%), fixed = 건당 고정비(원)", channels: channels };
+            try {
+                const resp = await fetch('./api/save-fees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                feesConfig = payload;
+                msg.textContent = '✅ 저장됐습니다';
+                msg.style.color = '#2b8a3e';
+                renderProfit();
+            } catch (e) {
+                msg.textContent = '❌ 저장 실패 - 수수료 설정은 매장 PC에서만 저장할 수 있습니다';
+                msg.style.color = '#e03131';
+            }
+            setTimeout(() => { msg.textContent = ''; }, 4000);
+        }
+
         // ===== 탭 핸들러 =====
         function showToday() {
             currentMode = 'today';
@@ -1382,6 +1504,14 @@
             showView('statsView');
             document.getElementById('comparisonStrip').classList.add('hidden');
             renderStats();
+        }
+
+        function showProfit() {
+            currentMode = 'profit';
+            setActiveTab('tab-profit');
+            showView('profitView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderProfit();
         }
 
         // ===== 초기 로드 + 자동 갱신 =====
