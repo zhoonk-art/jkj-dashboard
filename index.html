@@ -520,6 +520,99 @@
             margin-bottom: 12px;
         }
 
+        /* ---- 순익 탭 ---- */
+        .profit-summary {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .fee-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .fee-table th {
+            background: #faf7f5;
+            color: #777;
+            font-size: 11px;
+            padding: 8px 10px;
+            text-align: right;
+            border-bottom: 2px solid #eee;
+            white-space: nowrap;
+        }
+
+        .fee-table th:first-child, .fee-table td:first-child {
+            text-align: left;
+        }
+
+        .fee-table td {
+            padding: 9px 10px;
+            text-align: right;
+            border-bottom: 1px solid #f2f2f2;
+            white-space: nowrap;
+        }
+
+        .fee-table tr.total-row td {
+            font-weight: bold;
+            background: #faf7f5;
+            border-top: 2px solid #e5d9d0;
+        }
+
+        .fee-table .net-cell { color: #2b8a3e; font-weight: bold; }
+        .fee-table .fee-cell { color: #e03131; }
+
+        .fee-setting-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid #f5f5f5;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+
+        .fee-setting-row label {
+            flex: 1;
+            min-width: 130px;
+            color: #444;
+            font-weight: 600;
+        }
+
+        .fee-setting-row input {
+            width: 80px;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            text-align: right;
+        }
+
+        .fee-setting-row .unit {
+            color: #999;
+            font-size: 12px;
+            width: 60px;
+        }
+
+        .settings-note {
+            color: #999;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .save-btn {
+            margin-top: 12px;
+            padding: 9px 24px;
+            border: none;
+            border-radius: 8px;
+            background: #501100;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .save-btn:hover { background: #7a3a16; }
+
         .empty-note {
             text-align: center;
             color: #aaa;
@@ -607,6 +700,7 @@
             <button class="view-tab" id="tab-yesterday" onclick="showYesterday()">전 영업일</button>
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
+            <button class="view-tab" id="tab-profit" onclick="showProfit()">순익</button>
         </div>
 
         <!-- 오늘 vs 어제 비교 -->
@@ -698,6 +792,41 @@
             </div>
         </div>
 
+        <!-- 순익 뷰 -->
+        <div id="profitView" class="hidden">
+            <div class="summary-grid profit-summary">
+                <div class="summary-card total-amount">
+                    <h3>오늘 실수령 (예상)</h3>
+                    <div class="summary-value" id="profitNet">0원</div>
+                    <div class="summary-unit" id="profitNetSub" style="color: rgba(255,255,255,0.8);"></div>
+                </div>
+                <div class="summary-card">
+                    <h3>총 매출</h3>
+                    <div class="summary-value" id="profitGross">0원</div>
+                </div>
+                <div class="summary-card">
+                    <h3>수수료 합계</h3>
+                    <div class="summary-value" id="profitFees" style="color: #e03131;">0원</div>
+                    <div class="summary-unit" id="profitFeeRate"></div>
+                </div>
+            </div>
+
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>💰 오늘 채널별 실수령</h2>
+                <div style="overflow-x: auto;">
+                    <table class="fee-table" id="feeTable"></table>
+                </div>
+            </div>
+
+            <div class="orders-section">
+                <h2>⚙️ 채널 수수료 설정</h2>
+                <p class="settings-note">수수료율(%)과 건당 고정비(배달대행비 등)를 입력하세요. 매장 PC에서만 저장됩니다.</p>
+                <div id="feeSettings"></div>
+                <button class="save-btn" onclick="saveFees()">저장</button>
+                <span id="saveMsg" style="margin-left: 10px; font-size: 13px;"></span>
+            </div>
+        </div>
+
         <div class="refresh-info">
             <p>⏱️ 실시간 자동 갱신 | 마지막 업데이트: <span id="lastUpdate">-</span></p>
         </div>
@@ -753,7 +882,7 @@
         }
 
         function showView(viewId) {
-            ['dayView', 'historyView', 'statsView'].forEach(id => {
+            ['dayView', 'historyView', 'statsView', 'profitView'].forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', id !== viewId);
             });
         }
