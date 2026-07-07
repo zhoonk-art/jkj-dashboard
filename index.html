@@ -19,7 +19,8 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            /* 정강정 시그니처 브라운 (로고 CMYK 34.8/86.3/100/52) */
+            background: linear-gradient(135deg, #7a3a16 0%, #501100 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -84,7 +85,7 @@
 
         .view-tab.active {
             background: white;
-            color: #667eea;
+            color: #501100;
         }
 
         /* ---- 비교 스트립 ---- */
@@ -154,7 +155,7 @@
         }
 
         .total-amount {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8a4a1f 0%, #501100 100%);
             color: white;
         }
 
@@ -1133,16 +1134,14 @@
             }
 
             drawChart('trendChart', {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: daily.map(d => d.date.substring(5)),
                     datasets: [{
                         label: '일 매출 (원)',
                         data: daily.map(d => d.total_amount),
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102,126,234,0.15)',
-                        fill: true,
-                        tension: 0.3
+                        backgroundColor: '#8a4a1f',
+                        borderRadius: 3
                     }]
                 },
                 options: {
