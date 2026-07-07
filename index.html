@@ -745,7 +745,7 @@
                     <canvas id="channelChart"></canvas>
                 </div>
                 <div class="chart-card">
-                    <h3 id="productTitle">오늘의 TOP 5</h3>
+                    <h3 id="productTitle">오늘의 TOP 10</h3>
                     <div id="productList"></div>
                 </div>
             </div>
@@ -1087,6 +1087,13 @@
             const EXCLUDED_CATEGORIES = ['음료', '하부메뉴', '테스트'];
             const EXCLUDE_NAME = /다음에|리뷰|주세요|빼주/;
             const SIZE_RE = /(반마리|한마리|두마리)/;
+            // 채널별 상품명 정규화: "NEW 닭강정 한마리 반/반", "닭강정 한마리 반/반 (2인)(2인)" -> "닭강정 한마리 반/반"
+            function normalizeName(n) {
+                return n.replace(/^NEW\s*/i, '')
+                        .replace(/\(\d+(~\d+)?인\)/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+            }
             const products = {};
             activeOrders.forEach(order => {
                 const menus = order.menus || [];
@@ -1099,7 +1106,7 @@
                     if (menu.category && EXCLUDED_CATEGORIES.indexOf(menu.category) !== -1) return;
                     if (EXCLUDE_NAME.test(menu.name)) return;
 
-                    let name = menu.name;
+                    let name = normalizeName(menu.name);
                     // 마리 수 옵션을 메인 메뉴(사이드 제외) 이름에 반영
                     if (size && menu.category !== '사이드') {
                         if (SIZE_RE.test(name)) name = name.replace(SIZE_RE, size);
@@ -1110,10 +1117,10 @@
             });
             const productNames = Object.keys(products)
                 .sort((a, b) => products[b] - products[a])
-                .slice(0, 5); // TOP 5
+                .slice(0, 10); // TOP 10
 
             document.getElementById('productTitle').textContent =
-                isToday ? '오늘의 TOP 5' : dateStr + ' TOP 5';
+                isToday ? '오늘의 TOP 10' : dateStr + ' TOP 10';
 
             const productList = document.getElementById('productList');
             if (productNames.length === 0) {
