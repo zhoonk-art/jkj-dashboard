@@ -819,6 +819,33 @@
                 </div>
             </div>
 
+            <div class="summary-grid profit-summary" style="margin-top: 12px;">
+                <div class="summary-card">
+                    <h3>이번 달 실수령 누계</h3>
+                    <div class="summary-value" id="monthNet">-</div>
+                    <div class="summary-unit" id="monthNetSub"></div>
+                </div>
+                <div class="summary-card">
+                    <h3>월 운영비</h3>
+                    <div class="summary-value" id="monthCosts" style="color: #e03131;">-</div>
+                    <div class="summary-unit">아래에서 수정 가능</div>
+                </div>
+                <div class="summary-card total-amount">
+                    <h3>이번 달 손익 (진행 중)</h3>
+                    <div class="summary-value" id="monthProfit">-</div>
+                    <div class="summary-unit" id="breakEvenInfo" style="color: rgba(255,255,255,0.85);"></div>
+                </div>
+            </div>
+
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>🧾 월 운영비 설정</h2>
+                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×주일수×4.345주로 자동 계산됩니다.</p>
+                <div id="costSettings"></div>
+                <button class="save-btn" onclick="addCostItem()" style="background:#8a4a1f; margin-right:6px;">+ 항목 추가</button>
+                <button class="save-btn" onclick="saveCosts()">운영비 저장</button>
+                <span id="costSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
+            </div>
+
             <div class="orders-section">
                 <h2>⚙️ 채널 수수료 설정</h2>
                 <p class="settings-note">수수료율(%)과 건당 고정비(배달대행비 등)를 입력하세요. 매장 PC에서만 저장됩니다.</p>
@@ -1488,6 +1515,152 @@
                         </div>`;
                 }).join('') +
                 `<p class="settings-note" style="margin-top:8px;">부가세는 세 항목 합계의 10%로 자동 계산됩니다.</p>`;
+
+            // ----- 운영비 + 이번 달 손익 -----
+            await loadCosts();
+            renderCostSettings();
+            const mc = costsTotal();
+            document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
+
+            const m = await calcMonthNet();
+            document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
+            document.getElementById('monthNetSub').textContent = `영업 ${m.days}일 · 매출 ${m.gross.toLocaleString()}원`;
+
+            const profit = m.net - mc;
+            document.getElementById('monthProfit').textContent =
+                (profit >= 0 ? '+' : '') + profit.toLocaleString() + '원';
+            const dailyNeed = Math.round(mc / 26);
+            document.getElementById('breakEvenInfo').textContent =
+                `손익분기: 하루 실수령 약 ${dailyNeed.toLocaleString()}원 필요 (월 26일 기준)`;
+        }
+
+        // ===== 운영비 (월 고정비 + 인건비) =====
+        let costsConfig = null;
+
+        async function loadCosts() {
+            if (!costsConfig) {
+                costsConfig = await loadJson('./processed/costs.json');
+            }
+            if (!costsConfig) costsConfig = { fixed: [], labor: [] };
+            return costsConfig;
+        }
+
+        function laborMonthly(l) {
+            return Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
+        }
+
+        function costsTotal() {
+            let sum = 0;
+            (costsConfig.fixed || []).forEach(f => { sum += f.amount || 0; });
+            (costsConfig.labor || []).forEach(l => { sum += laborMonthly(l); });
+            return sum;
+        }
+
+        // 이번 달 실수령 누계 (아카이브 각 날짜의 채널별 합계에 수수료 적용 + 오늘)
+        async function calcMonthNet() {
+            const ym = todayStr().substring(0, 7);
+            const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
+            let gross = 0, net = 0, days = 0;
+
+            for (const d of idx.filter(x => x.date.substring(0, 7) === ym)) {
+                const s = await loadJson(`./processed/archive/${d.date}/summary.json`);
+                if (!s || !s.channels) continue;
+                days++;
+                Object.keys(s.channels).forEach(ch => {
+                    const c = s.channels[ch];
+                    const f = feeFor(ch);
+                    const med = Math.round(c.amount * f.med / 100);
+                    const pay = Math.round(c.amount * f.pay / 100);
+                    const del = f.del * c.count;
+                    const vat = Math.round((med + pay + del) * 0.1);
+                    gross += c.amount;
+                    net += c.amount - med - pay - del - vat;
+                });
+            }
+
+            const t = await loadJson('./processed/orders_latest.json');
+            if (t && t.date && t.date.substring(0, 7) === ym && t.orders) {
+                const act = t.orders.filter(o => !o.cancelled);
+                if (act.length > 0) days++;
+                act.forEach(o => { gross += o.amount; net += orderNet(o).net; });
+            }
+            return { gross: gross, net: net, days: days };
+        }
+
+        function renderCostSettings() {
+            const box = document.getElementById('costSettings');
+            let html = '';
+            (costsConfig.fixed || []).forEach((f, i) => {
+                html += `
+                    <div class="fee-setting-row">
+                        <input type="text" id="cost-name-${i}" value="${f.name}" style="flex:1; min-width:150px; text-align:left;">
+                        <input type="number" step="10000" min="0" id="cost-amt-${i}" value="${f.amount}" style="width:110px;"> <span class="unit">원/월</span>
+                    </div>`;
+            });
+            (costsConfig.labor || []).forEach((l, i) => {
+                html += `
+                    <div class="fee-setting-row" style="background:#faf7f5;">
+                        <input type="text" id="labor-name-${i}" value="${l.name}" style="flex:1; min-width:150px; text-align:left;">
+                        <input type="number" step="500" min="0" id="labor-hourly-${i}" value="${l.hourly}" style="width:75px;" onchange="renderProfitCosts()"> <span class="unit" style="width:34px;">원</span>
+                        <input type="number" step="0.5" min="0" id="labor-hours-${i}" value="${l.hours}" style="width:55px;" onchange="renderProfitCosts()"> <span class="unit" style="width:44px;">시간/일</span>
+                        <input type="number" step="1" min="0" max="7" id="labor-days-${i}" value="${l.days}" style="width:50px;" onchange="renderProfitCosts()"> <span class="unit" style="width:40px;">일/주</span>
+                        <span style="color:#8a4a1f; font-weight:bold; font-size:12px; white-space:nowrap;">≈ ${laborMonthly(l).toLocaleString()}원/월</span>
+                    </div>`;
+            });
+            box.innerHTML = html;
+        }
+
+        function collectCostsFromForm() {
+            const fixed = [];
+            (costsConfig.fixed || []).forEach((f, i) => {
+                const name = document.getElementById('cost-name-' + i).value.trim();
+                const amount = parseInt(document.getElementById('cost-amt-' + i).value) || 0;
+                if (name) fixed.push({ name: name, amount: amount });
+            });
+            const labor = [];
+            (costsConfig.labor || []).forEach((l, i) => {
+                const name = document.getElementById('labor-name-' + i).value.trim();
+                if (name) labor.push({
+                    name: name,
+                    hourly: parseInt(document.getElementById('labor-hourly-' + i).value) || 0,
+                    hours: parseFloat(document.getElementById('labor-hours-' + i).value) || 0,
+                    days: parseInt(document.getElementById('labor-days-' + i).value) || 0
+                });
+            });
+            return { note: costsConfig.note || '', fixed: fixed, labor: labor };
+        }
+
+        function renderProfitCosts() {
+            costsConfig = collectCostsFromForm();
+            document.getElementById('monthCosts').textContent = costsTotal().toLocaleString() + '원';
+            renderCostSettings();
+        }
+
+        function addCostItem() {
+            costsConfig = collectCostsFromForm();
+            costsConfig.fixed.push({ name: '새 항목', amount: 0 });
+            renderCostSettings();
+        }
+
+        async function saveCosts() {
+            const msg = document.getElementById('costSaveMsg');
+            const payload = collectCostsFromForm();
+            try {
+                const resp = await fetch('./api/save-costs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                costsConfig = payload;
+                msg.textContent = '✅ 저장됐습니다';
+                msg.style.color = '#2b8a3e';
+                renderProfit();
+            } catch (e) {
+                msg.textContent = '❌ 저장 실패 - 매장 PC에서만 저장할 수 있습니다';
+                msg.style.color = '#e03131';
+            }
+            setTimeout(() => { msg.textContent = ''; }, 4000);
         }
 
         async function saveFees() {
