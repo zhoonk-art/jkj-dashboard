@@ -12,11 +12,20 @@
             box-sizing: border-box;
         }
 
+        html, body {
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
+        }
+
+        canvas {
+            max-width: 100% !important;
         }
 
         .container {
@@ -86,11 +95,24 @@
             margin-bottom: 12px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             display: flex;
-            gap: 20px;
+            gap: 24px;
             align-items: center;
             flex-wrap: wrap;
             font-size: 13px;
             color: #555;
+        }
+
+        .comp-item {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+            white-space: nowrap;
+        }
+
+        .comp-label {
+            color: #999;
+            font-size: 12px;
+            font-weight: 600;
         }
 
         .comparison-strip .diff-up { color: #e03131; font-weight: bold; }
@@ -447,6 +469,8 @@
             word-break: keep-all;
         }
 
+        .cal-cnt-mini { display: none; }
+
         .cal-month-total {
             text-align: right;
             margin-top: 10px;
@@ -456,20 +480,18 @@
 
         /* ---- 기록(아카이브) 리스트 ---- */
         .history-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 11px 12px;
+            padding: 10px 12px;
             border: 1px solid #e5e5e5;
             border-radius: 6px;
             margin-bottom: 6px;
-            cursor: pointer;
-            transition: background 0.15s;
             font-size: 13px;
         }
 
-        .history-row:hover {
-            background: #f6f5ff;
+        .history-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
         }
 
         .history-date {
@@ -480,6 +502,7 @@
         .history-meta {
             color: #999;
             font-size: 12px;
+            margin-top: 3px;
         }
 
         .history-amount {
@@ -524,6 +547,49 @@
             .summary-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
+
+            /* 총 매출 카드는 한 줄 전체 차지 -> 1 + 2 + 2 배치로 깔끔하게 */
+            .summary-card.total-amount {
+                grid-column: 1 / -1;
+            }
+        }
+
+        /* ---- 모바일 최적화 ---- */
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+
+            .view-tab { padding: 9px 4px; font-size: 13px; }
+
+            /* 비교: 한 줄에 하나씩, 레이블 왼쪽 / 값 오른쪽 */
+            .comparison-strip {
+                flex-direction: column;
+                gap: 6px;
+                align-items: stretch;
+            }
+
+            .comp-item {
+                justify-content: space-between;
+                white-space: normal;
+            }
+
+            .summary-value { font-size: 18px; }
+
+            /* 캘린더: 칸 축소 + 축약 표기 */
+            .cal-grid { gap: 2px; }
+
+            .cal-cell {
+                min-height: 54px;
+                padding: 3px 3px;
+                min-width: 0;
+                overflow: hidden;
+            }
+
+            .cal-amt { font-size: 10.5px; }
+
+            .cal-cnt-full { display: none; }
+            .cal-cnt-mini { display: block; font-size: 8.5px; }
+
+            .cal-nav-btn { padding: 4px 10px; }
         }
     </style>
 </head>
@@ -754,11 +820,9 @@
 
             const label = baseDateStr === todayStr() ? '오늘' : baseDateStr;
             strip.innerHTML = `
-                <span><b>${label}</b> ${cur.toLocaleString()}원 (${baseSummary.total_orders || 0}건)</span>
-                <span>vs</span>
-                <span><b>전주 ${dayNames[dow]}요일(${lwStr})</b> ${lwHtml}</span>
-                <span>vs</span>
-                <span><b>${dayNames[dow]}요일 평균</b> ${avgHtml}</span>
+                <div class="comp-item"><span class="comp-label">${label}</span><span class="comp-val"><b>${cur.toLocaleString()}원</b> (${baseSummary.total_orders || 0}건)</span></div>
+                <div class="comp-item"><span class="comp-label">전주 ${dayNames[dow]}요일(${lwStr.substring(5)})</span><span class="comp-val">${lwHtml}</span></div>
+                <div class="comp-item"><span class="comp-label">${dayNames[dow]}요일 평균</span><span class="comp-val">${avgHtml}</span></div>
             `;
         }
 
@@ -1013,7 +1077,8 @@
                         <div class="cal-cell has-data" onclick="showDate('${ds}')">
                             <div class="cal-date${sunCls}">${d}</div>
                             <div class="cal-amt">${((rec.total_amount || 0) / 10000).toFixed(1)}만</div>
-                            <div class="cal-cnt">${rec.total_orders}건(내점${rec.takeout_count || 0}, 배달${rec.delivery_count || 0})</div>
+                            <div class="cal-cnt cal-cnt-full">${rec.total_orders}건(내점${rec.takeout_count || 0}, 배달${rec.delivery_count || 0})</div>
+                            <div class="cal-cnt cal-cnt-mini">${rec.total_orders}건 내${rec.takeout_count || 0}·배${rec.delivery_count || 0}</div>
                         </div>`;
                 } else if (ds === today) {
                     html += `
@@ -1048,11 +1113,11 @@
                 const avg = dayCount > 0 ? Math.round(monthly[m].month_total / dayCount) : 0;
                 return `
                     <div class="history-row">
-                        <div>
+                        <div class="history-top">
                             <span class="history-date">${m}</span>
-                            <span class="history-meta"> · ${monthly[m].orders_count}건 · 영업 ${dayCount}일 · 일평균 ${avg.toLocaleString()}원</span>
+                            <span class="history-amount">${monthly[m].month_total.toLocaleString()}원</span>
                         </div>
-                        <div class="history-amount">${monthly[m].month_total.toLocaleString()}원</div>
+                        <div class="history-meta">${monthly[m].orders_count}건 · 영업 ${dayCount}일 · 일평균 ${avg.toLocaleString()}원</div>
                     </div>
                 `;
             }).join('');
