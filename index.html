@@ -401,7 +401,7 @@
         .cal-dayname.sun { color: #e03131; }
 
         .cal-cell {
-            min-height: 58px;
+            min-height: 66px;
             border: 1px solid #eee;
             border-radius: 6px;
             padding: 5px 6px;
@@ -441,8 +441,10 @@
         }
 
         .cal-cnt {
-            color: #aaa;
-            font-size: 10px;
+            color: #999;
+            font-size: 9.5px;
+            line-height: 1.3;
+            word-break: keep-all;
         }
 
         .cal-month-total {
@@ -535,7 +537,7 @@
         <!-- 기간 선택 탭 -->
         <div class="view-tabs">
             <button class="view-tab active" id="tab-today" onclick="showToday()">오늘</button>
-            <button class="view-tab" id="tab-yesterday" onclick="showYesterday()">어제</button>
+            <button class="view-tab" id="tab-yesterday" onclick="showYesterday()">전 영업일</button>
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
         </div>
@@ -581,7 +583,7 @@
                     <canvas id="channelChart"></canvas>
                 </div>
                 <div class="chart-card">
-                    <h3>상품별 판매량</h3>
+                    <h3 id="productTitle">오늘의 TOP 5</h3>
                     <div id="productList"></div>
                 </div>
             </div>
@@ -708,15 +710,17 @@
         // ===== 비교 스트립 =====
         async function renderComparison(baseDateStr, baseSummary, myToken) {
             const strip = document.getElementById('comparisonStrip');
-            // 비교 대상: 하루 전 (아카이브에서)
-            const prev = new Date(baseDateStr);
-            prev.setDate(prev.getDate() - 1);
-            const prevStr = fmtDate(prev);
-            const prevSummary = await loadJson(`./processed/archive/${prevStr}/summary.json`);
+            // 비교 대상: 직전 영업일 (휴무일 건너뜀)
+            let prevStr = null;
+            const index = await loadJson('./processed/archive/archive_index.json');
+            if (index && index.length) {
+                prevStr = index.map(d => d.date).filter(d => d < baseDateStr).sort().pop() || null;
+            }
+            const prevSummary = prevStr ? await loadJson(`./processed/archive/${prevStr}/summary.json`) : null;
             if (myToken !== undefined && myToken !== renderSeq) return;
 
             if (!baseSummary || !prevSummary) {
-                strip.innerHTML = `<span>📊 비교할 전일 데이터가 없습니다</span>`;
+                strip.innerHTML = `<span>📊 비교할 이전 영업일 데이터가 없습니다</span>`;
                 return;
             }
 
@@ -736,7 +740,7 @@
             strip.innerHTML = `
                 <span><b>${label}</b> ${cur.toLocaleString()}원 (${baseSummary.total_orders || 0}건)</span>
                 <span>vs</span>
-                <span><b>전일(${prevStr})</b> ${before.toLocaleString()}원 (${prevSummary.total_orders || 0}건)</span>
+                <span><b>전 영업일(${prevStr})</b> ${before.toLocaleString()}원 (${prevSummary.total_orders || 0}건)</span>
                 <span>${diffHtml}</span>
             `;
         }
@@ -867,15 +871,19 @@
                 });
             });
             const productNames = Object.keys(products)
-                .sort((a, b) => products[b] - products[a]);
+                .sort((a, b) => products[b] - products[a])
+                .slice(0, 5); // TOP 5
+
+            document.getElementById('productTitle').textContent =
+                isToday ? '오늘의 TOP 5' : dateStr + ' TOP 5';
 
             const productList = document.getElementById('productList');
             if (productNames.length === 0) {
                 productList.innerHTML = '<div class="empty-note">판매 내역이 없습니다</div>';
             } else {
-                productList.innerHTML = productNames.map(p => `
+                productList.innerHTML = productNames.map((p, i) => `
                     <div class="product-row">
-                        <span class="product-name">${p}</span>
+                        <span class="product-name">${i + 1}위. ${p}</span>
                         <span class="product-count">${products[p]}개</span>
                     </div>
                 `).join('');
@@ -970,7 +978,7 @@
                         <div class="cal-cell has-data" onclick="showDate('${ds}')">
                             <div class="cal-date${sunCls}">${d}</div>
                             <div class="cal-amt">${((rec.total_amount || 0) / 10000).toFixed(1)}만</div>
-                            <div class="cal-cnt">${rec.total_orders}건</div>
+                            <div class="cal-cnt">${rec.total_orders}건(내점${rec.takeout_count || 0}, 배달${rec.delivery_count || 0})</div>
                         </div>`;
                 } else if (ds === today) {
                     html += `
@@ -1113,8 +1121,14 @@
             renderDay(todayStr());
         }
 
-        function showYesterday() {
-            showDate(yesterdayStr(), 'tab-yesterday');
+        async function showYesterday() {
+            // 월요일 휴무 등으로 어제 데이터가 없을 수 있으니 가장 최근 영업일을 찾음
+            const index = await loadJson('./processed/archive/archive_index.json');
+            let prev = null;
+            if (index && index.length) {
+                prev = index.map(d => d.date).filter(d => d < todayStr()).sort().pop() || null;
+            }
+            showDate(prev || yesterdayStr(), 'tab-yesterday');
         }
 
         function showDate(dateStr, tabId) {
