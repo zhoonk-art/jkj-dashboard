@@ -710,38 +710,55 @@
         // ===== 비교 스트립 =====
         async function renderComparison(baseDateStr, baseSummary, myToken) {
             const strip = document.getElementById('comparisonStrip');
-            // 비교 대상: 직전 영업일 (휴무일 건너뜀)
-            let prevStr = null;
             const index = await loadJson('./processed/archive/archive_index.json');
-            if (index && index.length) {
-                prevStr = index.map(d => d.date).filter(d => d < baseDateStr).sort().pop() || null;
-            }
-            const prevSummary = prevStr ? await loadJson(`./processed/archive/${prevStr}/summary.json`) : null;
             if (myToken !== undefined && myToken !== renderSeq) return;
 
-            if (!baseSummary || !prevSummary) {
-                strip.innerHTML = `<span>📊 비교할 이전 영업일 데이터가 없습니다</span>`;
+            if (!baseSummary || !index || !index.length) {
+                strip.innerHTML = `<span>📊 비교할 기록이 없습니다</span>`;
                 return;
             }
 
+            const byDate = {};
+            index.forEach(d => { byDate[d.date] = d; });
+
             const cur = baseSummary.total_amount || 0;
-            const before = prevSummary.total_amount || 0;
-            let diffHtml;
-            if (before === 0) {
-                diffHtml = '<span class="diff-flat">-</span>';
-            } else {
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const base = new Date(baseDateStr);
+            const dow = base.getDay();
+
+            // 증감률 표시
+            function diffBadge(before) {
+                if (!before) return '';
                 const pct = ((cur - before) / before * 100).toFixed(1);
-                if (cur > before) diffHtml = `<span class="diff-up">▲ +${pct}%</span>`;
-                else if (cur < before) diffHtml = `<span class="diff-down">▼ ${pct}%</span>`;
-                else diffHtml = '<span class="diff-flat">— 0%</span>';
+                if (cur > before) return ` <span class="diff-up">▲ +${pct}%</span>`;
+                if (cur < before) return ` <span class="diff-down">▼ ${pct}%</span>`;
+                return ' <span class="diff-flat">— 0%</span>';
+            }
+
+            // 1) 전주 같은 요일
+            const lw = new Date(base);
+            lw.setDate(lw.getDate() - 7);
+            const lwStr = fmtDate(lw);
+            const lastWeek = byDate[lwStr] || null;
+            const lwHtml = lastWeek
+                ? `${(lastWeek.total_amount || 0).toLocaleString()}원 (${lastWeek.total_orders}건)${diffBadge(lastWeek.total_amount)}`
+                : '기록 없음';
+
+            // 2) 같은 요일 평균 (해당 날짜 제외한 과거 전체)
+            const sameDow = index.filter(d => d.date !== baseDateStr && new Date(d.date).getDay() === dow);
+            let avgHtml = '기록 없음';
+            if (sameDow.length > 0) {
+                const avg = Math.round(sameDow.reduce((s, d) => s + (d.total_amount || 0), 0) / sameDow.length);
+                avgHtml = `${avg.toLocaleString()}원 (${sameDow.length}일 평균)${diffBadge(avg)}`;
             }
 
             const label = baseDateStr === todayStr() ? '오늘' : baseDateStr;
             strip.innerHTML = `
                 <span><b>${label}</b> ${cur.toLocaleString()}원 (${baseSummary.total_orders || 0}건)</span>
                 <span>vs</span>
-                <span><b>전 영업일(${prevStr})</b> ${before.toLocaleString()}원 (${prevSummary.total_orders || 0}건)</span>
-                <span>${diffHtml}</span>
+                <span><b>전주 ${dayNames[dow]}요일(${lwStr})</b> ${lwHtml}</span>
+                <span>vs</span>
+                <span><b>${dayNames[dow]}요일 평균</b> ${avgHtml}</span>
             `;
         }
 
@@ -860,14 +877,32 @@
                 }
             });
 
-            // 상품별 판매 갯수 목록 (메인 메뉴만, 판매량 많은 순)
-            const EXCLUDED_CATEGORIES = ['사이드', '음료', '하부메뉴', '테스트'];
+            // 상품별 판매 갯수 목록 (메인+사이드, 판매량 많은 순)
+            // - 음료/하부메뉴/테스트 카테고리 제외
+            // - "다음에 할게요", 리뷰이벤트, "~주세요" 같은 옵션성 상품 제외
+            // - 옵션에 반마리/한마리/두마리가 있으면 실제 마리 수로 집계
+            const EXCLUDED_CATEGORIES = ['음료', '하부메뉴', '테스트'];
+            const EXCLUDE_NAME = /다음에|리뷰|주세요|빼주/;
+            const SIZE_RE = /(반마리|한마리|두마리)/;
             const products = {};
             activeOrders.forEach(order => {
-                (order.menus || []).forEach(menu => {
-                    if (menu.is_option) return; // 옵션/구성품 제외
-                    if (menu.category && EXCLUDED_CATEGORIES.indexOf(menu.category) !== -1) return; // 사이드/음료 제외
-                    products[menu.name] = (products[menu.name] || 0) + (menu.qty || 1);
+                const menus = order.menus || [];
+                // 이 주문의 마리 수 옵션 찾기 (예: "한마리(2인)")
+                const sizeOpt = menus.find(m => m.is_option && SIZE_RE.test(m.name));
+                const size = sizeOpt ? sizeOpt.name.match(SIZE_RE)[1] : null;
+
+                menus.forEach(menu => {
+                    if (menu.is_option) return;
+                    if (menu.category && EXCLUDED_CATEGORIES.indexOf(menu.category) !== -1) return;
+                    if (EXCLUDE_NAME.test(menu.name)) return;
+
+                    let name = menu.name;
+                    // 마리 수 옵션을 메인 메뉴(사이드 제외) 이름에 반영
+                    if (size && menu.category !== '사이드') {
+                        if (SIZE_RE.test(name)) name = name.replace(SIZE_RE, size);
+                        else name = name + ' ' + size;
+                    }
+                    products[name] = (products[name] || 0) + (menu.qty || 1);
                 });
             });
             const productNames = Object.keys(products)
