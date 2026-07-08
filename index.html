@@ -1561,8 +1561,46 @@
         // ===== 재료비 (메뉴별 원가) =====
         let menuCosts = null;
 
+        // 매입가(raw)에서 단위 원가 자동 계산
+        // 고정 사용량: 닭 반350g/한750g/두1.5kg, 파우더 130g/닭kg, 양념 3oz(85g), 간장 2oz(56.7g), 기름 2통/100건, 떡 반40g/한80g
+        function applyDerivedCosts(mc) {
+            const r = mc && mc.raw;
+            if (!r) return mc;
+            const R = Math.round;
+            const perKg = (r['닭 1kg'] || 0) + (r['파우더 5kg'] || 0) / 5 * 0.13;
+            mc.chicken_base = { '반마리': R(perKg * 0.35), '한마리': R(perKg * 0.75), '두마리': R(perKg * 1.5) };
+            const yangnyeom = R((r['양념소스 10kg'] || 0) / 10000 * 85.05);
+            mc.sauce_per_half = {
+                '달콤양념': yangnyeom, '매콤양념': yangnyeom,
+                '매콤간장': R((r['매콤간장소스 10kg'] || 0) / 10000 * 56.7),
+                '후라이드': 0
+            };
+            mc.box = {
+                '반마리': (r['반마리 겉박스'] || 0) + (r['반마리 속박스'] || 0),
+                '한마리': (r['한마리 겉박스'] || 0) + (r['한마리 속박스'] || 0),
+                '한마리 반/반': (r['반반 겉박스'] || 0) + (r['반반 속박스'] || 0),
+                '두마리': (r['두마리 겉박스'] || 0) + (r['두마리 속박스'] || 0)
+            };
+            const shrimpUnit = (r['새우 큰박스(288마리)'] || 0) / 288;
+            mc.shrimp = { '6p': R(shrimpUnit * 6), '12p': R(shrimpUnit * 12), '24p': R(shrimpUnit * 24) };
+            mc.per_order = {
+                '식용유': R((2 * (r['식용유 1통'] || 0) + (r['폐유 처리'] || 0)) / 100),
+                '젓가락': r['젓가락'] || 0,
+                '비닐': r['비닐'] || 0
+            };
+            mc.per_menu = { '치킨무': R((r['치킨무 50개'] || 0) / 50) };
+            mc.sides = mc.sides || {};
+            mc.sides['즉석밥'] = R((r['즉석밥 24개'] || 0) / 24);
+            mc.sides['양배추샐러드'] = R((r['양배추 1통(8개분)'] || 0) / 8);
+            mc.sides['떡사리40g'] = R((r['떡 6kg'] || 0) / 6000 * 40);
+            mc.sides['떡사리80g'] = R((r['떡 6kg'] || 0) / 6000 * 80);
+            return mc;
+        }
+
         async function loadMenuCosts() {
-            if (!menuCosts) menuCosts = await loadJson('./processed/menu_costs.json');
+            if (!menuCosts) {
+                menuCosts = applyDerivedCosts(await loadJson('./processed/menu_costs.json'));
+            }
             return menuCosts;
         }
 
@@ -1669,17 +1707,14 @@
             return cost;
         }
 
-        // ----- 재료비 설정 UI -----
+        // ----- 재료비 설정 UI (매입가 입력 -> 단위원가 자동계산) -----
         const MENU_COST_GROUPS = [
-            ['chicken_base', '🍗 닭+파우더 (마리 수별)'],
-            ['sauce_per_half', '🥫 소스 (반마리 1국자 기준)'],
-            ['box', '📦 박스'],
-            ['shrimp', '🦐 새우'],
-            ['per_order', '🛢 주문당 공통 (기름/젓가락/비닐)'],
-            ['per_menu', '🥗 메뉴당 서비스'],
-            ['sides', '🍢 사이드'],
-            ['drinks', '🥤 음료']
+            ['raw', '🧾 매입가 (여기 숫자를 명세서와 비교하세요)'],
+            ['sides', '🍢 사이드 원가 (개당)'],
+            ['drinks', '🥤 음료 매입가 (개당)']
         ];
+        // sides 중 매입가에서 자동 계산되는 항목 (직접 편집 불가)
+        const DERIVED_SIDE_KEYS = ['즉석밥', '양배추샐러드', '떡사리40g', '떡사리80g'];
 
         function renderMenuCostSettings() {
             const box = document.getElementById('menuCostSettings');
@@ -1692,6 +1727,7 @@
                 const grp = menuCosts[g[0]] || {};
                 html += `<div class="comp-section-title" style="margin-top:10px;">${g[1]}</div>`;
                 Object.keys(grp).forEach(k => {
+                    if (g[0] === 'sides' && DERIVED_SIDE_KEYS.indexOf(k) !== -1) return;
                     html += `
                         <div class="fee-setting-row">
                             <label>${k}</label>
@@ -1699,6 +1735,17 @@
                         </div>`;
                 });
             });
+
+            // 자동 계산된 단위 원가 미리보기 (읽기 전용)
+            html += `<div class="comp-section-title" style="margin-top:12px;">📐 자동 계산된 단위 원가 (참고용 — 매입가를 바꾸면 자동 갱신)</div>
+                <div style="font-size:12px; color:#777; line-height:1.9; padding:6px 4px;">
+                    닭+파우더: 반 ${menuCosts.chicken_base['반마리'].toLocaleString()} · 한 ${menuCosts.chicken_base['한마리'].toLocaleString()} · 두 ${menuCosts.chicken_base['두마리'].toLocaleString()}원<br>
+                    소스(1국자): 양념 ${menuCosts.sauce_per_half['달콤양념']} · 매콤간장 ${menuCosts.sauce_per_half['매콤간장']}원<br>
+                    박스(겉+속): 반 ${menuCosts.box['반마리']} · 한 ${menuCosts.box['한마리']} · 반/반 ${menuCosts.box['한마리 반/반']} · 두 ${menuCosts.box['두마리']}원<br>
+                    새우: 6p ${menuCosts.shrimp['6p'].toLocaleString()} · 12p ${menuCosts.shrimp['12p'].toLocaleString()} · 24p ${menuCosts.shrimp['24p'].toLocaleString()}원<br>
+                    기름(건당): ${menuCosts.per_order['식용유'].toLocaleString()}원 · 치킨무: ${menuCosts.per_menu['치킨무']}원<br>
+                    즉석밥: ${menuCosts.sides['즉석밥'].toLocaleString()}원 · 샐러드: ${menuCosts.sides['양배추샐러드']}원 · 떡사리: 40g ${menuCosts.sides['떡사리40g']} / 80g ${menuCosts.sides['떡사리80g']}원
+                </div>`;
             box.innerHTML = html;
         }
 
@@ -1708,10 +1755,12 @@
             MENU_COST_GROUPS.forEach(g => {
                 const grp = payload[g[0]] || {};
                 Object.keys(grp).forEach(k => {
+                    if (g[0] === 'sides' && DERIVED_SIDE_KEYS.indexOf(k) !== -1) return;
                     const el = document.getElementById('mcost-' + g[0] + '-' + k);
                     if (el) grp[k] = parseInt(el.value) || 0;
                 });
             });
+            applyDerivedCosts(payload); // 매입가 기준으로 단위원가 재계산 후 저장
             try {
                 const resp = await fetch('./api/save-menucosts', {
                     method: 'POST',
