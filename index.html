@@ -1227,8 +1227,8 @@
                     </div>`).join('');
             }
 
-            // 판매량 많은 순으로 정렬
-            const sizeSorted = SIZE_BUCKETS.slice().sort((a, b) => sizeCounts[b] - sizeCounts[a]);
+            // 판매량 많은 순으로 정렬 (마리 수는 상위 5개만)
+            const sizeSorted = SIZE_BUCKETS.slice().sort((a, b) => sizeCounts[b] - sizeCounts[a]).slice(0, 5);
             const flavorSorted = FLAVOR_BUCKETS.slice().sort((a, b) => flavorCounts[b] - flavorCounts[a]);
             document.getElementById('productList').innerHTML =
                 '<div class="comp-section-title">🍗 마리 수</div>' + compRows(sizeCounts, sizeSorted) +
