@@ -486,6 +486,8 @@
 
         .cal-cnt-mini { display: none; }
 
+        .cal-cell.other-month { opacity: 0.5; }
+
         .cal-month-total {
             text-align: right;
             margin-top: 10px;
@@ -1152,7 +1154,7 @@
             // 판매 구성: 마리 수 & 맛 선택 카운팅
             const EXCLUDE_NAME = /다음에|리뷰|주세요|빼주|시즈닝|소떡|치킨무|감자|닭껍질|샐러드|치즈볼|떡사리|콜라|스프라이트|사이다|즉석밥/;
             const SIZE_RE = /(반마리|한마리|두마리)/;
-            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리'];
+            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리', '새우 6p', '새우 12p', '새우 24p'];
             const FLAVOR_BUCKETS = ['달콤양념', '후라이드', '매콤양념', '매콤간장'];
             const sizeCounts = {};
             SIZE_BUCKETS.forEach(k => { sizeCounts[k] = 0; });
@@ -1190,11 +1192,19 @@
                     const nameSize = name.match(SIZE_RE);
                     const size = nameSize ? nameSize[1] : optSize;
 
-                    // 마리 수 버킷
+                    // 마리 수 버킷 (닭)
                     let bucket = null;
                     if (banban) bucket = (size === '두마리') ? '두마리' : '한마리 반/반';
                     else if (size) bucket = size;
                     if (bucket) sizeCounts[bucket] += (menu.qty || 1);
+
+                    // 새우강정 (단품/세트 모두 새우 구성으로 집계)
+                    if (/새우/.test(name)) {
+                        const so = menus.find(m => m.is_option && /(24|12|6)\s*p/i.test(m.name));
+                        const src = name + ' ' + (so ? so.name : '');
+                        const sp = /24/.test(src) ? '24p' : /12/.test(src) ? '12p' : '6p';
+                        sizeCounts['새우 ' + sp] += (menu.qty || 1);
+                    }
 
                     // 맛 (옵션에 맛 정보가 없던 주문만 상품명에서)
                     if (!flavorFound) {
@@ -1298,7 +1308,25 @@
             dayNames.forEach((d, i) => {
                 html += `<div class="cal-dayname${i === 0 ? ' sun' : ''}">${d}</div>`;
             });
-            for (let i = 0; i < firstDow; i++) html += '<div class="cal-cell empty"></div>';
+
+            // 앞칸: 지난달 말일 날짜를 참고용으로 표시 (기록 있으면 클릭 가능)
+            const prevLastDate = new Date(y, m, 0).getDate();
+            for (let i = 0; i < firstDow; i++) {
+                const pd = prevLastDate - firstDow + 1 + i;
+                const pds = fmtDate(new Date(y, m - 1, pd));
+                const prec = archiveByDate[pds];
+                if (prec) {
+                    html += `
+                        <div class="cal-cell has-data other-month" onclick="showDate('${pds}')">
+                            <div class="cal-date">${pd}</div>
+                            <div class="cal-amt">${((prec.total_amount || 0) / 10000).toFixed(1)}만</div>
+                            <div class="cal-cnt cal-cnt-full">${prec.total_orders}건(내점${prec.takeout_count || 0}, 배달${prec.delivery_count || 0})</div>
+                            <div class="cal-cnt cal-cnt-mini">${prec.total_orders}건 내${prec.takeout_count || 0}·배${prec.delivery_count || 0}</div>
+                        </div>`;
+                } else {
+                    html += `<div class="cal-cell closed other-month"><div class="cal-date">${pd}</div></div>`;
+                }
+            }
 
             let monthTotal = 0;
             for (let d = 1; d <= daysInMonth; d++) {
