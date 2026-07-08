@@ -1462,19 +1462,21 @@
             return {
                 med: ch ? (ch.mediation_pct || 0) : 0,   // 중개이용료 %
                 pay: ch ? (ch.payment_pct || 0) : 0,     // 결제정산수수료 %
-                del: ch ? (ch.delivery_fixed || 0) : 0   // 건당 배달비 원
+                del: ch ? (ch.delivery_fixed || 0) : 0,  // 건당 배달비 원
+                ad: ch ? (ch.ad_pct || 0) : 0            // 매출연동 광고비 %
             };
         }
 
-        // 주문 1건의 수수료 분해: 중개 + 결제 + 배달비 + 부가세(합의 10%)
+        // 주문 1건의 수수료 분해: 중개 + 결제 + 배달비 + 광고 + 부가세(합의 10%)
         function orderNet(order) {
             const f = feeFor(order.channel);
             const med = Math.round(order.amount * f.med / 100);
             const pay = Math.round(order.amount * f.pay / 100);
             const del = f.del;
-            const vat = Math.round((med + pay + del) * 0.1);
-            const fee = med + pay + del + vat;
-            return { med: med, pay: pay, del: del, vat: vat, fee: fee, net: order.amount - fee };
+            const ad = Math.round(order.amount * f.ad / 100);
+            const vat = Math.round((med + pay + del + ad) * 0.1);
+            const fee = med + pay + del + ad + vat;
+            return { med: med, pay: pay, del: del, ad: ad, vat: vat, fee: fee, net: order.amount - fee };
         }
 
         async function renderProfit() {
@@ -1488,19 +1490,19 @@
             // 채널별 집계 (중개/결제/배달비/부가세 분해)
             const rows = {};
             let gross = 0, totalFee = 0, totalMat = 0;
-            const tot = { med: 0, pay: 0, del: 0, vat: 0 };
+            const tot = { med: 0, pay: 0, del: 0, ad: 0, vat: 0 };
             orders.forEach(o => {
                 const r = orderNet(o);
                 const mat = orderCost(o);
                 gross += o.amount;
                 totalFee += r.fee;
                 totalMat += mat;
-                tot.med += r.med; tot.pay += r.pay; tot.del += r.del; tot.vat += r.vat;
-                if (!rows[o.channel]) rows[o.channel] = { count: 0, gross: 0, med: 0, pay: 0, del: 0, vat: 0, fee: 0, net: 0, mat: 0 };
+                tot.med += r.med; tot.pay += r.pay; tot.del += r.del; tot.ad += r.ad; tot.vat += r.vat;
+                if (!rows[o.channel]) rows[o.channel] = { count: 0, gross: 0, med: 0, pay: 0, del: 0, ad: 0, vat: 0, fee: 0, net: 0, mat: 0 };
                 const row = rows[o.channel];
                 row.count++;
                 row.gross += o.amount;
-                row.med += r.med; row.pay += r.pay; row.del += r.del; row.vat += r.vat;
+                row.med += r.med; row.pay += r.pay; row.del += r.del; row.ad += r.ad; row.vat += r.vat;
                 row.fee += r.fee;
                 row.net += r.net;
                 row.mat += mat;
@@ -1514,7 +1516,7 @@
 
             // 채널 테이블 (항목별 분해)
             const chNames = Object.keys(rows).sort((a, b) => rows[b].gross - rows[a].gross);
-            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>부가세</th><th>실수령</th><th>재료비</th><th>마진</th><th>마진률</th></tr>';
+            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>광고</th><th>부가세</th><th>실수령</th><th>재료비</th><th>마진</th><th>마진률</th></tr>';
             chNames.forEach(ch => {
                 const r = rows[ch];
                 const chMargin = r.net - r.mat;
@@ -1526,6 +1528,7 @@
                     <td class="fee-cell">${r.med ? '-' + r.med.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.pay ? '-' + r.pay.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.del ? '-' + r.del.toLocaleString() : '·'}</td>
+                    <td class="fee-cell">${r.ad ? '-' + r.ad.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.vat ? '-' + r.vat.toLocaleString() : '·'}</td>
                     <td>${r.net.toLocaleString()}</td>
                     <td class="fee-cell">-${r.mat.toLocaleString()}</td>
@@ -1541,6 +1544,7 @@
                 <td class="fee-cell">-${tot.med.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.pay.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.del.toLocaleString()}</td>
+                <td class="fee-cell">-${tot.ad.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.vat.toLocaleString()}</td>
                 <td>${net.toLocaleString()}</td>
                 <td class="fee-cell">-${totalMat.toLocaleString()}</td>
@@ -1557,6 +1561,7 @@
                     <span style="width:80px; text-align:center;">중개 %</span>
                     <span style="width:80px; text-align:center;">결제 %</span>
                     <span style="width:80px; text-align:center;">배달비 원</span>
+                    <span style="width:80px; text-align:center;">광고 %</span>
                 </div>` +
                 FEE_CHANNELS.map(ch => {
                     const f = feeFor(ch);
@@ -1566,9 +1571,10 @@
                             <input type="number" step="0.1" min="0" id="fee-med-${ch}" value="${f.med}">
                             <input type="number" step="0.1" min="0" id="fee-pay-${ch}" value="${f.pay}">
                             <input type="number" step="100" min="0" id="fee-del-${ch}" value="${f.del}">
+                            <input type="number" step="0.1" min="0" id="fee-ad-${ch}" value="${f.ad}">
                         </div>`;
                 }).join('') +
-                `<p class="settings-note" style="margin-top:8px;">부가세는 세 항목 합계의 10%로 자동 계산됩니다.</p>`;
+                `<p class="settings-note" style="margin-top:8px;">부가세는 네 항목 합계의 10%로 자동 계산됩니다. 광고%는 매출연동 광고(쿠팡 등)에만 사용하세요.</p>`;
 
             // ----- 운영비 + 이번 달 손익 -----
             await loadCosts();
@@ -1962,7 +1968,8 @@
                 channels[ch] = {
                     mediation_pct: parseFloat(document.getElementById('fee-med-' + ch).value) || 0,
                     payment_pct: parseFloat(document.getElementById('fee-pay-' + ch).value) || 0,
-                    delivery_fixed: parseInt(document.getElementById('fee-del-' + ch).value) || 0
+                    delivery_fixed: parseInt(document.getElementById('fee-del-' + ch).value) || 0,
+                    ad_pct: parseFloat(document.getElementById('fee-ad-' + ch).value) || 0
                 };
             });
             const payload = { note: "mediation_pct=중개(%), payment_pct=결제(%), delivery_fixed=배달비(원), 부가세는 합의 10% 자동", channels: channels };
