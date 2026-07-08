@@ -235,6 +235,20 @@
             margin-left: 8px;
         }
 
+        .comp-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #8a4a1f;
+            padding-bottom: 4px;
+            border-bottom: 2px solid #f0e8e2;
+        }
+
+        .comp-pct {
+            color: #bbb;
+            font-weight: normal;
+            font-size: 12px;
+        }
+
         @media (max-width: 900px) {
             .day-charts {
                 grid-template-columns: 1fr;
@@ -1044,7 +1058,7 @@
                 let netSum = 0;
                 activeOrders.forEach(o => { netSum += orderNet(o).net; });
                 document.getElementById('dayNet').textContent =
-                    activeOrders.length > 0 ? `실수령 약 ${netSum.toLocaleString()}원` : '';
+                    activeOrders.length > 0 ? `예상 마진 약 ${netSum.toLocaleString()}원` : '';
             });
 
             // 채널별 차트 (취소 건 제외)
@@ -1107,81 +1121,77 @@
                 }
             });
 
-            // 상품별 판매 갯수 목록 (메인+사이드, 판매량 많은 순)
-            // - 음료/하부메뉴/테스트 카테고리 제외
-            // - "다음에 할게요", 리뷰이벤트, "~주세요" 같은 옵션성 상품 제외
-            // - 옵션에 반마리/한마리/두마리가 있으면 실제 마리 수로 집계
-            const EXCLUDED_CATEGORIES = ['사이드', '음료', '하부메뉴', '테스트'];
+            // 판매 구성: 마리 수 & 맛 선택 카운팅
             const EXCLUDE_NAME = /다음에|리뷰|주세요|빼주|시즈닝|소떡|치킨무|감자|닭껍질|샐러드|치즈볼|떡사리|콜라|스프라이트|사이다|즉석밥/;
             const SIZE_RE = /(반마리|한마리|두마리)/;
-            // 채널별 상품명 정규화: "NEW 닭강정 한마리 반/반", "닭강정 한마리 반/반 (2인)(2인)" -> "닭강정 한마리 반/반"
-            function normalizeName(n) {
-                return n.replace(/^NEW\s*/i, '')
-                        .replace(/\(\d+(~\d+)?인\)/g, '')
-                        .replace(/\s+/g, ' ')
-                        .trim();
+            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리'];
+            const FLAVOR_BUCKETS = ['달콤양념', '후라이드', '매콤양념', '매콤간장'];
+            const sizeCounts = {};
+            SIZE_BUCKETS.forEach(k => { sizeCounts[k] = 0; });
+            const flavorCounts = {};
+            FLAVOR_BUCKETS.forEach(k => { flavorCounts[k] = 0; });
+
+            function flavorBucket(s) {
+                if (/매콤\s*간장/.test(s)) return '매콤간장';
+                if (/매콤/.test(s)) return '매콤양념';
+                if (/달콤/.test(s)) return '달콤양념';
+                if (/후라이드/.test(s)) return '후라이드';
+                return null;
             }
-            const products = {};
-            // 매장 공통상품("닭강정 N마리")을 맛 옵션에 따라 배달앱 상품명과 통일
-            const FLAVOR_MAP = [
-                [/매콤\s*간장/, '매콤간장닭강정'],
-                [/매콤/, '매콤양념닭강정'],
-                [/달콤/, '달콤양념닭강정'],
-                [/후라이드/, '순살 후라이드']
-            ];
 
             activeOrders.forEach(order => {
                 const menus = order.menus || [];
-                // 이 주문의 마리 수 옵션 찾기 (예: "한마리(2인)")
                 const sizeOpt = menus.find(m => m.is_option && SIZE_RE.test(m.name));
-                const size = sizeOpt ? sizeOpt.name.match(SIZE_RE)[1] : null;
-                // 이 주문의 맛 옵션 찾기 (달콤 양념 / 매콤 양념 / 매콤 간장 / 후라이드)
-                const flavorOpt = menus.find(m => m.is_option && /매콤|달콤|후라이드/.test(m.name));
+                const optSize = sizeOpt ? sizeOpt.name.match(SIZE_RE)[1] : null;
+
+                // 맛 선택: 옵션에서 수집 (반/반은 맛 2개), 옵션 없으면 상품명에서
+                let flavorFound = false;
+                menus.forEach(m => {
+                    if (!m.is_option) return;
+                    const fb = flavorBucket(m.name);
+                    if (fb) { flavorCounts[fb] += (m.qty || 1); flavorFound = true; }
+                });
 
                 menus.forEach(menu => {
                     if (menu.is_option) return;
-                    if (menu.category && EXCLUDED_CATEGORIES.indexOf(menu.category) !== -1) return;
+                    if (menu.category && ['사이드', '음료', '하부메뉴', '테스트'].indexOf(menu.category) !== -1) return;
                     if (EXCLUDE_NAME.test(menu.name)) return;
 
-                    let name = normalizeName(menu.name);
+                    const name = menu.name;
+                    const banban = /반\s*\/\s*반/.test(name);
+                    const nameSize = name.match(SIZE_RE);
+                    const size = nameSize ? nameSize[1] : optSize;
 
-                    // 매장 등록명 "닭강정 반마리/한마리/두마리" -> 맛 옵션 기준으로 배달앱 이름과 통일
-                    const generic = name.match(/^닭강정\s*(반마리|한마리|두마리)?$/);
-                    if (generic && flavorOpt) {
-                        for (const fm of FLAVOR_MAP) {
-                            if (fm[0].test(flavorOpt.name)) {
-                                name = fm[1] + (generic[1] ? ' ' + generic[1] : '');
-                                break;
-                            }
-                        }
-                    }
+                    // 마리 수 버킷
+                    let bucket = null;
+                    if (banban) bucket = (size === '두마리') ? '두마리' : '한마리 반/반';
+                    else if (size) bucket = size;
+                    if (bucket) sizeCounts[bucket] += (menu.qty || 1);
 
-                    // 마리 수 옵션을 메인 메뉴(사이드 제외) 이름에 반영
-                    if (size && menu.category !== '사이드') {
-                        if (SIZE_RE.test(name)) name = name.replace(SIZE_RE, size);
-                        else name = name + ' ' + size;
+                    // 맛 (옵션에 맛 정보가 없던 주문만 상품명에서)
+                    if (!flavorFound) {
+                        const fb = flavorBucket(name);
+                        if (fb) flavorCounts[fb] += (menu.qty || 1);
                     }
-                    products[name] = (products[name] || 0) + (menu.qty || 1);
                 });
             });
-            const productNames = Object.keys(products)
-                .sort((a, b) => products[b] - products[a])
-                .slice(0, 10); // TOP 10
 
             document.getElementById('productTitle').textContent =
-                isToday ? '오늘의 TOP 10' : dateStr + ' TOP 10';
+                isToday ? '오늘의 판매 구성' : dateStr + ' 판매 구성';
 
-            const productList = document.getElementById('productList');
-            if (productNames.length === 0) {
-                productList.innerHTML = '<div class="empty-note">판매 내역이 없습니다</div>';
-            } else {
-                productList.innerHTML = productNames.map((p, i) => `
+            function compRows(counts, keys) {
+                const total = keys.reduce((s, k) => s + counts[k], 0);
+                if (total === 0) return '<div class="empty-note" style="padding:8px 0;">데이터 없음</div>';
+                return keys.map(k => `
                     <div class="product-row">
-                        <span class="product-name">${i + 1}위. ${p}</span>
-                        <span class="product-count">${products[p]}개</span>
-                    </div>
-                `).join('');
+                        <span class="product-name">${k}</span>
+                        <span class="product-count">${counts[k]}개 <span class="comp-pct">${Math.round(counts[k] / total * 100)}%</span></span>
+                    </div>`).join('');
             }
+
+            document.getElementById('productList').innerHTML =
+                '<div class="comp-section-title">🍗 마리 수</div>' + compRows(sizeCounts, SIZE_BUCKETS) +
+                '<div class="comp-section-title" style="margin-top:12px;">🌶️ 맛 선택</div>' + compRows(flavorCounts, FLAVOR_BUCKETS);
 
             // 주문 목록
             const ordersList = document.getElementById('ordersList');
