@@ -860,6 +860,14 @@
                 <span id="costSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
             </div>
 
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>🥘 재료비 설정</h2>
+                <p class="settings-note">단위 원가(원)입니다. 매입가가 바뀌면 여기서 수정하고 저장하세요.</p>
+                <div id="menuCostSettings"></div>
+                <button class="save-btn" onclick="saveMenuCosts()">재료비 저장</button>
+                <span id="menuCostSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
+            </div>
+
             <div class="orders-section">
                 <h2>⚙️ 채널 수수료 설정</h2>
                 <p class="settings-note">수수료율(%)과 건당 고정비(배달대행비 등)를 입력하세요. 매장 PC에서만 저장됩니다.</p>
@@ -1569,7 +1577,9 @@
             if (/닭껍질/.test(name)) return s['닭껍질'];
             if (/콜라/.test(name)) return (/1\.25/.test(name)) ? d['콜라1.25'] : (/245/.test(name)) ? d['콜라245'] : d['콜라500'];
             if (/스프라이트/.test(name)) return (/1\.5/.test(name)) ? d['스프라이트1.5'] : d['스프라이트500'];
-            return 0; // 원가 미등록 항목 (즉석밥, 시즈닝, 떡사리 등)
+            if (/즉석밥/.test(name)) return s['즉석밥'];
+            if (/샐러드/.test(name)) return s['양배추샐러드'];
+            return 0; // 원가 미등록 항목 (시즈닝 등)
         }
 
         // 주문 1건의 재료비 추정
@@ -1582,6 +1592,8 @@
             const optSize = sizeOpt ? sizeOpt.name.match(SZ)[1] : null;
             const noMu = menus.some(m => m.is_option && /무.*빼|빼.*무/.test(m.name));
             const flavorNames = menus.filter(m => m.is_option && /매콤|달콤|후라이드/.test(m.name)).map(m => m.name);
+            // 떡사리 용량 판단용: 한마리/두마리 주문이면 80g, 반마리면 40g
+            const bigSize = menus.some(m => !m.is_option && /(한마리|두마리)/.test(m.name)) || optSize === '한마리' || optSize === '두마리';
 
             function sauceCost(fname) {
                 if (/매콤\s*간장/.test(fname)) return mc.sauce_per_half['매콤간장'];
@@ -1598,6 +1610,10 @@
                 const qty = menu.qty || 1;
 
                 if (menu.is_option) {
+                    if (/떡사리/.test(name)) {
+                        cost += (mc.sides[bigSize ? '떡사리80g' : '떡사리40g'] || 0) * qty;
+                        return;
+                    }
                     cost += sideDrinkCost(name) * qty; // 유료 추가 옵션(음료/사이드)
                     return;
                 }
