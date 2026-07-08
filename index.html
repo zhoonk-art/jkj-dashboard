@@ -1061,16 +1061,32 @@
             const avgValue = orderCount > 0 ? Math.round(totalAmount / orderCount) : 0;
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
-            // 총매출 카드에 예상 마진(수수료+재료비 차감) + 마진률 병기
+            // 총매출/포장/배달 카드에 예상 마진 + 마진률 병기
             Promise.all([loadFees(), loadMenuCosts()]).then(() => {
                 let netSum = 0, matSum = 0;
-                activeOrders.forEach(o => { netSum += orderNet(o).net; matSum += orderCost(o); });
+                const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
+                activeOrders.forEach(o => {
+                    const n = orderNet(o).net;
+                    const c = orderCost(o);
+                    netSum += n; matSum += c;
+                    const t = byType[o.type] || byType.takeout;
+                    t.margin += n - c;
+                    t.gross += o.amount;
+                });
                 const margin = netSum - matSum;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
                     activeOrders.length > 0
-                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}% · 재료비 ${matSum.toLocaleString()}원 반영)`
+                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}%)`
                         : '';
+
+                // 포장/배달 카드: 금액 옆에 마진률
+                const tRate = byType.takeout.gross > 0 ? (byType.takeout.margin / byType.takeout.gross * 100).toFixed(1) : null;
+                const dRate = byType.delivery.gross > 0 ? (byType.delivery.margin / byType.delivery.gross * 100).toFixed(1) : null;
+                document.getElementById('takeoutAmount').textContent =
+                    takeoutAmount.toLocaleString() + '원' + (tRate !== null ? ` · 마진률 ${tRate}%` : '');
+                document.getElementById('deliveryAmount').textContent =
+                    deliveryAmount.toLocaleString() + '원' + (dRate !== null ? ` · 마진률 ${dRate}%` : '');
             });
 
             // 채널별 차트 (취소 건 제외)
