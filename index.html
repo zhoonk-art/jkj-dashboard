@@ -811,7 +811,7 @@
         <div id="profitView" class="hidden">
             <div class="summary-grid profit-summary">
                 <div class="summary-card total-amount">
-                    <h3>오늘 실수령 (예상)</h3>
+                    <h3>오늘 순마진 (예상)</h3>
                     <div class="summary-value" id="profitNet">0원</div>
                     <div class="summary-unit" id="profitNetSub" style="color: rgba(255,255,255,0.8);"></div>
                 </div>
@@ -1504,21 +1504,18 @@
             });
             const net = gross - totalFee;
 
-            let matCost = 0;
-            orders.forEach(o => { matCost += orderCost(o); });
-            document.getElementById('profitNet').textContent = net.toLocaleString() + '원';
-            document.getElementById('profitNetSub').textContent =
-                `재료비 약 ${matCost.toLocaleString()}원 제외 시 마진 ${(net - matCost).toLocaleString()}원`;
+            // 순마진 카드는 인건비 로드 후 아래에서 채움 (net/totalMat 사용)
             document.getElementById('profitGross').textContent = gross.toLocaleString() + '원';
             document.getElementById('profitFees').textContent = '-' + totalFee.toLocaleString() + '원';
             document.getElementById('profitFeeRate').textContent = gross > 0 ? `평균 수수료율 ${(totalFee / gross * 100).toFixed(1)}%` : '';
 
             // 채널 테이블 (항목별 분해)
             const chNames = Object.keys(rows).sort((a, b) => rows[b].gross - rows[a].gross);
-            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>부가세</th><th>실수령</th><th>마진률</th></tr>';
+            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>부가세</th><th>실수령</th><th>재료비</th><th>마진</th><th>마진률</th></tr>';
             chNames.forEach(ch => {
                 const r = rows[ch];
-                const mRate = r.gross > 0 ? ((r.net - r.mat) / r.gross * 100).toFixed(1) : 0;
+                const chMargin = r.net - r.mat;
+                const mRate = r.gross > 0 ? (chMargin / r.gross * 100).toFixed(1) : 0;
                 html += `<tr>
                     <td>${ch}</td>
                     <td>${r.count}건</td>
@@ -1527,11 +1524,14 @@
                     <td class="fee-cell">${r.pay ? '-' + r.pay.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.del ? '-' + r.del.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.vat ? '-' + r.vat.toLocaleString() : '·'}</td>
-                    <td class="net-cell">${r.net.toLocaleString()}</td>
+                    <td>${r.net.toLocaleString()}</td>
+                    <td class="fee-cell">-${r.mat.toLocaleString()}</td>
+                    <td class="net-cell">${chMargin.toLocaleString()}</td>
                     <td class="net-cell">${mRate}%</td>
                 </tr>`;
             });
-            const totalRate = gross > 0 ? ((net - totalMat) / gross * 100).toFixed(1) : 0;
+            const totalMargin = net - totalMat;
+            const totalRate = gross > 0 ? (totalMargin / gross * 100).toFixed(1) : 0;
             html += `<tr class="total-row">
                 <td>합계</td><td>${orders.length}건</td>
                 <td>${gross.toLocaleString()}</td>
@@ -1539,7 +1539,9 @@
                 <td class="fee-cell">-${tot.pay.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.del.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.vat.toLocaleString()}</td>
-                <td class="net-cell">${net.toLocaleString()}</td>
+                <td>${net.toLocaleString()}</td>
+                <td class="fee-cell">-${totalMat.toLocaleString()}</td>
+                <td class="net-cell">${totalMargin.toLocaleString()}</td>
                 <td class="net-cell">${totalRate}%</td>
             </tr>`;
             document.getElementById('feeTable').innerHTML = html;
@@ -1571,6 +1573,15 @@
             renderMenuCostSettings();
             const mc = costsTotal();
             document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
+
+            // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(일할) 차감
+            const laborMonthlyTotal = (costsConfig.labor || []).reduce((s, l) => s + laborMonthly(l), 0);
+            const laborDaily = Math.round(laborMonthlyTotal / 26);
+            const netMargin = net - totalMat - laborDaily;
+            const nmRate = gross > 0 ? (netMargin / gross * 100).toFixed(1) : 0;
+            document.getElementById('profitNet').textContent = netMargin.toLocaleString() + '원';
+            document.getElementById('profitNetSub').textContent =
+                `수수료·재료비·인건비(일 ${laborDaily.toLocaleString()}원) 차감 · 마진률 ${nmRate}%`;
 
             const m = await calcMonthNet();
             document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
