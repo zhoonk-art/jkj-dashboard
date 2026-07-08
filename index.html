@@ -1061,13 +1061,16 @@
             const avgValue = orderCount > 0 ? Math.round(totalAmount / orderCount) : 0;
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
-            // 총매출 카드에 예상 마진(수수료+재료비 차감) 병기
+            // 총매출 카드에 예상 마진(수수료+재료비 차감) + 마진률 병기
             Promise.all([loadFees(), loadMenuCosts()]).then(() => {
                 let netSum = 0, matSum = 0;
                 activeOrders.forEach(o => { netSum += orderNet(o).net; matSum += orderCost(o); });
                 const margin = netSum - matSum;
-                document.getElementById('dayNet').textContent =
-                    activeOrders.length > 0 ? `예상 마진 약 ${margin.toLocaleString()}원 (재료비 ${matSum.toLocaleString()}원 반영)` : '';
+                const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
+                document.getElementById('dayNet').innerHTML =
+                    activeOrders.length > 0
+                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}% · 재료비 ${matSum.toLocaleString()}원 반영)`
+                        : '';
             });
 
             // 채널별 차트 (취소 건 제외)
@@ -1465,20 +1468,23 @@
 
             // 채널별 집계 (중개/결제/배달비/부가세 분해)
             const rows = {};
-            let gross = 0, totalFee = 0;
+            let gross = 0, totalFee = 0, totalMat = 0;
             const tot = { med: 0, pay: 0, del: 0, vat: 0 };
             orders.forEach(o => {
                 const r = orderNet(o);
+                const mat = orderCost(o);
                 gross += o.amount;
                 totalFee += r.fee;
+                totalMat += mat;
                 tot.med += r.med; tot.pay += r.pay; tot.del += r.del; tot.vat += r.vat;
-                if (!rows[o.channel]) rows[o.channel] = { count: 0, gross: 0, med: 0, pay: 0, del: 0, vat: 0, fee: 0, net: 0 };
+                if (!rows[o.channel]) rows[o.channel] = { count: 0, gross: 0, med: 0, pay: 0, del: 0, vat: 0, fee: 0, net: 0, mat: 0 };
                 const row = rows[o.channel];
                 row.count++;
                 row.gross += o.amount;
                 row.med += r.med; row.pay += r.pay; row.del += r.del; row.vat += r.vat;
                 row.fee += r.fee;
                 row.net += r.net;
+                row.mat += mat;
             });
             const net = gross - totalFee;
 
@@ -1493,9 +1499,10 @@
 
             // 채널 테이블 (항목별 분해)
             const chNames = Object.keys(rows).sort((a, b) => rows[b].gross - rows[a].gross);
-            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>부가세</th><th>실수령</th></tr>';
+            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>부가세</th><th>실수령</th><th>마진률</th></tr>';
             chNames.forEach(ch => {
                 const r = rows[ch];
+                const mRate = r.gross > 0 ? ((r.net - r.mat) / r.gross * 100).toFixed(1) : 0;
                 html += `<tr>
                     <td>${ch}</td>
                     <td>${r.count}건</td>
@@ -1505,8 +1512,10 @@
                     <td class="fee-cell">${r.del ? '-' + r.del.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.vat ? '-' + r.vat.toLocaleString() : '·'}</td>
                     <td class="net-cell">${r.net.toLocaleString()}</td>
+                    <td class="net-cell">${mRate}%</td>
                 </tr>`;
             });
+            const totalRate = gross > 0 ? ((net - totalMat) / gross * 100).toFixed(1) : 0;
             html += `<tr class="total-row">
                 <td>합계</td><td>${orders.length}건</td>
                 <td>${gross.toLocaleString()}</td>
@@ -1515,6 +1524,7 @@
                 <td class="fee-cell">-${tot.del.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.vat.toLocaleString()}</td>
                 <td class="net-cell">${net.toLocaleString()}</td>
+                <td class="net-cell">${totalRate}%</td>
             </tr>`;
             document.getElementById('feeTable').innerHTML = html;
 
