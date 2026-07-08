@@ -1574,9 +1574,8 @@
             const mc = costsTotal();
             document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
 
-            // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(일할) 차감
-            const laborMonthlyTotal = (costsConfig.labor || []).reduce((s, l) => s + laborMonthly(l), 0);
-            const laborDaily = Math.round(laborMonthlyTotal / 26);
+            // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(하루 근무분 = 시급x시간) 차감
+            const laborDaily = (costsConfig.labor || []).reduce((s, l) => s + Math.round((l.hourly || 0) * (l.hours || 0)), 0);
             const netMargin = net - totalMat - laborDaily;
             const nmRate = gross > 0 ? (netMargin / gross * 100).toFixed(1) : 0;
             document.getElementById('profitNet').textContent = netMargin.toLocaleString() + '원';
@@ -1662,7 +1661,7 @@
         function orderCost(order) {
             if (!menuCosts) return 0;
             const mc = menuCosts;
-            const menus = order.menus || [];
+            const menus = order.menus || order.items || [];
             const SZ = /(반마리|한마리|두마리)/;
             const sizeOpt = menus.find(m => m.is_option && SZ.test(m.name));
             const optSize = sizeOpt ? sizeOpt.name.match(SZ)[1] : null;
