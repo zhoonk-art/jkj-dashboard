@@ -1542,6 +1542,7 @@
             // ----- 운영비 + 이번 달 손익 -----
             await loadCosts();
             renderCostSettings();
+            renderMenuCostSettings();
             const mc = costsTotal();
             document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
 
@@ -1666,6 +1667,67 @@
                 cost += (mc.per_order['식용유'] || 0) + (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
             }
             return cost;
+        }
+
+        // ----- 재료비 설정 UI -----
+        const MENU_COST_GROUPS = [
+            ['chicken_base', '🍗 닭+파우더 (마리 수별)'],
+            ['sauce_per_half', '🥫 소스 (반마리 1국자 기준)'],
+            ['box', '📦 박스'],
+            ['shrimp', '🦐 새우'],
+            ['per_order', '🛢 주문당 공통 (기름/젓가락/비닐)'],
+            ['per_menu', '🥗 메뉴당 서비스'],
+            ['sides', '🍢 사이드'],
+            ['drinks', '🥤 음료']
+        ];
+
+        function renderMenuCostSettings() {
+            const box = document.getElementById('menuCostSettings');
+            if (!menuCosts) {
+                box.innerHTML = '<div class="empty-note">재료비 설정을 불러올 수 없습니다</div>';
+                return;
+            }
+            let html = '';
+            MENU_COST_GROUPS.forEach(g => {
+                const grp = menuCosts[g[0]] || {};
+                html += `<div class="comp-section-title" style="margin-top:10px;">${g[1]}</div>`;
+                Object.keys(grp).forEach(k => {
+                    html += `
+                        <div class="fee-setting-row">
+                            <label>${k}</label>
+                            <input type="number" step="1" min="0" id="mcost-${g[0]}-${k}" value="${grp[k]}" style="width:100px;"> <span class="unit">원</span>
+                        </div>`;
+                });
+            });
+            box.innerHTML = html;
+        }
+
+        async function saveMenuCosts() {
+            const msg = document.getElementById('menuCostSaveMsg');
+            const payload = JSON.parse(JSON.stringify(menuCosts));
+            MENU_COST_GROUPS.forEach(g => {
+                const grp = payload[g[0]] || {};
+                Object.keys(grp).forEach(k => {
+                    const el = document.getElementById('mcost-' + g[0] + '-' + k);
+                    if (el) grp[k] = parseInt(el.value) || 0;
+                });
+            });
+            try {
+                const resp = await fetch('./api/save-menucosts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                menuCosts = payload;
+                msg.textContent = '✅ 저장됐습니다';
+                msg.style.color = '#2b8a3e';
+                renderProfit();
+            } catch (e) {
+                msg.textContent = '❌ 저장 실패 - 매장 PC에서만 저장할 수 있습니다';
+                msg.style.color = '#e03131';
+            }
+            setTimeout(() => { msg.textContent = ''; }, 4000);
         }
 
         // ===== 운영비 (월 고정비 + 인건비) =====
