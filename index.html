@@ -1053,12 +1053,13 @@
             const avgValue = orderCount > 0 ? Math.round(totalAmount / orderCount) : 0;
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
-            // 총매출 카드에 실수령(수수료 차감) 병기
-            loadFees().then(() => {
-                let netSum = 0;
-                activeOrders.forEach(o => { netSum += orderNet(o).net; });
+            // 총매출 카드에 예상 마진(수수료+재료비 차감) 병기
+            Promise.all([loadFees(), loadMenuCosts()]).then(() => {
+                let netSum = 0, matSum = 0;
+                activeOrders.forEach(o => { netSum += orderNet(o).net; matSum += orderCost(o); });
+                const margin = netSum - matSum;
                 document.getElementById('dayNet').textContent =
-                    activeOrders.length > 0 ? `예상 마진 약 ${netSum.toLocaleString()}원` : '';
+                    activeOrders.length > 0 ? `예상 마진 약 ${margin.toLocaleString()}원 (재료비 ${matSum.toLocaleString()}원 반영)` : '';
             });
 
             // 채널별 차트 (취소 건 제외)
@@ -1448,6 +1449,7 @@
 
         async function renderProfit() {
             await loadFees();
+            await loadMenuCosts();
             const data = await loadJson('./processed/orders_latest.json');
             if (!data) return;
 
@@ -1472,8 +1474,11 @@
             });
             const net = gross - totalFee;
 
+            let matCost = 0;
+            orders.forEach(o => { matCost += orderCost(o); });
             document.getElementById('profitNet').textContent = net.toLocaleString() + '원';
-            document.getElementById('profitNetSub').textContent = `매출의 ${gross > 0 ? (net / gross * 100).toFixed(1) : 0}%`;
+            document.getElementById('profitNetSub').textContent =
+                `재료비 약 ${matCost.toLocaleString()}원 제외 시 마진 ${(net - matCost).toLocaleString()}원`;
             document.getElementById('profitGross').textContent = gross.toLocaleString() + '원';
             document.getElementById('profitFees').textContent = '-' + totalFee.toLocaleString() + '원';
             document.getElementById('profitFeeRate').textContent = gross > 0 ? `평균 수수료율 ${(totalFee / gross * 100).toFixed(1)}%` : '';
@@ -1542,6 +1547,109 @@
             const dailyNeed = Math.round(mc / 26);
             document.getElementById('breakEvenInfo').textContent =
                 `손익분기: 하루 실수령 약 ${dailyNeed.toLocaleString()}원 필요 (월 26일 기준)`;
+        }
+
+        // ===== 재료비 (메뉴별 원가) =====
+        let menuCosts = null;
+
+        async function loadMenuCosts() {
+            if (!menuCosts) menuCosts = await loadJson('./processed/menu_costs.json');
+            return menuCosts;
+        }
+
+        function sideDrinkCost(name) {
+            if (!menuCosts) return 0;
+            const s = menuCosts.sides, d = menuCosts.drinks;
+            if (/로제/.test(name)) return s['로제떡볶이'];
+            if (/떡볶이/.test(name)) return s['떡볶이'];
+            if (/케이준|감자/.test(name)) return (/리뷰|1\/2/.test(name)) ? s['케이준_리뷰'] : s['케이준'];
+            if (/치즈볼/.test(name)) return (/4/.test(name)) ? s['치즈볼4'] : s['치즈볼2'];
+            if (/대게살/.test(name)) return s['대게살'];
+            if (/소떡/.test(name)) return s['소떡소떡'];
+            if (/닭껍질/.test(name)) return s['닭껍질'];
+            if (/콜라/.test(name)) return (/1\.25/.test(name)) ? d['콜라1.25'] : (/245/.test(name)) ? d['콜라245'] : d['콜라500'];
+            if (/스프라이트/.test(name)) return (/1\.5/.test(name)) ? d['스프라이트1.5'] : d['스프라이트500'];
+            return 0; // 원가 미등록 항목 (즉석밥, 시즈닝, 떡사리 등)
+        }
+
+        // 주문 1건의 재료비 추정
+        function orderCost(order) {
+            if (!menuCosts) return 0;
+            const mc = menuCosts;
+            const menus = order.menus || [];
+            const SZ = /(반마리|한마리|두마리)/;
+            const sizeOpt = menus.find(m => m.is_option && SZ.test(m.name));
+            const optSize = sizeOpt ? sizeOpt.name.match(SZ)[1] : null;
+            const noMu = menus.some(m => m.is_option && /무.*빼|빼.*무/.test(m.name));
+            const flavorNames = menus.filter(m => m.is_option && /매콤|달콤|후라이드/.test(m.name)).map(m => m.name);
+
+            function sauceCost(fname) {
+                if (/매콤\s*간장/.test(fname)) return mc.sauce_per_half['매콤간장'];
+                if (/매콤/.test(fname)) return mc.sauce_per_half['매콤양념'];
+                if (/달콤/.test(fname)) return mc.sauce_per_half['달콤양념'];
+                return 0; // 후라이드
+            }
+
+            let cost = 0;
+            let chickenMenus = 0;
+
+            menus.forEach(menu => {
+                const name = menu.name;
+                const qty = menu.qty || 1;
+
+                if (menu.is_option) {
+                    cost += sideDrinkCost(name) * qty; // 유료 추가 옵션(음료/사이드)
+                    return;
+                }
+                if (/다음에|주세요|빼주|리뷰/.test(name)) return;
+
+                const banban = /반\s*\/\s*반/.test(name);
+                const nameSize = name.match(SZ);
+                const size = nameSize ? nameSize[1] : optSize;
+                const hasShrimp = /새우/.test(name);
+                const hasChicken = /닭|후라이드|양념/.test(name) && (size || banban);
+
+                if (hasChicken) {
+                    chickenMenus += qty;
+                    const sz = size || '반마리';
+                    cost += (mc.chicken_base[sz] || 0) * qty;
+
+                    // 박스
+                    if (banban) cost += (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) * qty;
+                    else cost += (mc.box[sz] || 0) * qty;
+
+                    // 소스 (반마리=1국자, 한마리/반반=2, 두마리=4)
+                    const halves = sz === '두마리' ? 4 : sz === '한마리' ? 2 : banban ? 2 : 1;
+                    if (banban && flavorNames.length >= 2) {
+                        cost += (sauceCost(flavorNames[0]) + sauceCost(flavorNames[1])) * (halves / 2) * qty;
+                    } else {
+                        const fsrc = flavorNames.length ? flavorNames[0] : name;
+                        cost += sauceCost(fsrc) * halves * qty;
+                    }
+                } else if (!hasShrimp) {
+                    cost += sideDrinkCost(name) * qty; // 단품 사이드/음료
+                }
+
+                // 새우 (단품 또는 세트)
+                if (hasShrimp) {
+                    let sp = null;
+                    if (/24/.test(name)) sp = '24p';
+                    else if (/12/.test(name)) sp = '12p';
+                    else sp = '6p'; // 6p 또는 "소"
+                    cost += (mc.shrimp[sp] || 0) * qty;
+                    // 새우 박스 (6p=반마리박스, 12p/24p=한/두마리박스)
+                    cost += (sp === '6p' ? mc.box['반마리'] : sp === '12p' ? mc.box['한마리'] : mc.box['두마리']) * qty;
+                    if (!hasChicken) chickenMenus += qty; // 새우 단품도 무 서비스 대상
+                }
+            });
+
+            // 메뉴당 치킨무 서비스
+            if (!noMu) cost += (mc.per_menu['치킨무'] || 0) * chickenMenus;
+            // 주문당 공통 (기름/젓가락/비닐)
+            if (chickenMenus > 0) {
+                cost += (mc.per_order['식용유'] || 0) + (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
+            }
+            return cost;
         }
 
         // ===== 운영비 (월 고정비 + 인건비) =====
