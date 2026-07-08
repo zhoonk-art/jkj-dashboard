@@ -1598,17 +1598,18 @@
         let menuCosts = null;
 
         // 매입가(raw)에서 단위 원가 자동 계산
-        // 고정 사용량: 닭 반350g/한750g/두1.5kg, 파우더 130g/닭kg, 양념 3oz(85g), 간장 2oz(56.7g), 기름 2통/100건, 떡 반40g/한80g
+        // 고정 사용량: 닭 반350g/한750g/두1.5kg, 파우더 130g/닭kg, 양념 150g/간장 100g(반마리 실측), 기름 2통/100건, 떡 반40g/한80g
         function applyDerivedCosts(mc) {
             const r = mc && mc.raw;
             if (!r) return mc;
             const R = Math.round;
             const perKg = (r['닭 1kg'] || 0) + (r['파우더 5kg'] || 0) / 5 * 0.13;
             mc.chicken_base = { '반마리': R(perKg * 0.35), '한마리': R(perKg * 0.75), '두마리': R(perKg * 1.5) };
-            const yangnyeom = R((r['양념소스 10kg'] || 0) / 10000 * 85.05);
+            // 실측 사용량(반마리 기준): 양념 150g, 매콤간장 100g
+            const yangnyeom = R((r['양념소스 10kg'] || 0) / 10000 * 150);
             mc.sauce_per_half = {
                 '달콤양념': yangnyeom, '매콤양념': yangnyeom,
-                '매콤간장': R((r['매콤간장소스 10kg'] || 0) / 10000 * 56.7),
+                '매콤간장': R((r['매콤간장소스 10kg'] || 0) / 10000 * 100),
                 '후라이드': 0
             };
             mc.box = {
