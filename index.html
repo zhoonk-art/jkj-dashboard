@@ -1721,15 +1721,22 @@
                     cost += sideDrinkCost(name) * qty; // 단품 사이드/음료
                 }
 
-                // 새우 (단품 또는 세트)
+                // 새우 (단품 또는 세트) - 파우더는 완제품이라 없음
                 if (hasShrimp) {
+                    // 크기: 상품명 우선, 없으면 옵션(예: "└ 12p")에서
+                    const shrimpOpt = menus.find(m => m.is_option && /(24|12|6)\s*p/i.test(m.name));
+                    const spSrc = name + ' ' + (shrimpOpt ? shrimpOpt.name : '');
                     let sp = null;
-                    if (/24/.test(name)) sp = '24p';
-                    else if (/12/.test(name)) sp = '12p';
+                    if (/24/.test(spSrc)) sp = '24p';
+                    else if (/12/.test(spSrc)) sp = '12p';
                     else sp = '6p'; // 6p 또는 "소"
                     cost += (mc.shrimp[sp] || 0) * qty;
                     // 새우 박스 (6p=반마리박스, 12p/24p=한/두마리박스)
                     cost += (sp === '6p' ? mc.box['반마리'] : sp === '12p' ? mc.box['한마리'] : mc.box['두마리']) * qty;
+                    // 새우 소스: 6p=1국자, 12p=2국자, 24p=4국자 (맛은 상품명 우선, 없으면 맛 옵션)
+                    const sHalves = sp === '24p' ? 4 : sp === '12p' ? 2 : 1;
+                    const sFlavorSrc = /매콤|달콤|후라이드/.test(name) ? name : (flavorNames.length ? flavorNames[0] : '');
+                    cost += sauceCost(sFlavorSrc) * sHalves * qty;
                     if (!hasChicken) chickenMenus += qty; // 새우 단품도 무 서비스 대상
                 }
             });
