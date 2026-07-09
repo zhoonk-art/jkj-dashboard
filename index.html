@@ -488,6 +488,37 @@
 
         .cal-cell.other-month { opacity: 0.5; }
 
+        /* ---- 마케팅 히트맵 ---- */
+        .heat-table {
+            border-collapse: separate;
+            border-spacing: 2px;
+            width: 100%;
+            font-size: 11px;
+        }
+
+        .heat-table th {
+            color: #999;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 4px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .heat-cell {
+            text-align: center;
+            padding: 6px 2px;
+            border-radius: 4px;
+            min-width: 34px;
+            font-weight: 600;
+            cursor: default;
+            transition: outline 0.1s;
+        }
+
+        .heat-cell:hover {
+            outline: 2px solid #8a4a1f;
+        }
+
         .cal-month-total {
             text-align: right;
             margin-top: 10px;
@@ -748,6 +779,7 @@
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
             <button class="view-tab" id="tab-profit" onclick="showProfit()">순익</button>
+            <button class="view-tab" id="tab-marketing" onclick="showMarketing()">마케팅</button>
         </div>
 
         <!-- 오늘 vs 어제 비교 -->
@@ -901,12 +933,33 @@
                 <span id="menuCostSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
             </div>
 
-            <div class="orders-section">
+            <div class="orders-section" id="feeSettingsSection">
                 <h2>⚙️ 채널 수수료 설정</h2>
                 <p class="settings-note">수수료율(%)과 건당 고정비(배달대행비 등)를 입력하세요. 매장 PC에서만 저장됩니다.</p>
                 <div id="feeSettings"></div>
                 <button class="save-btn" onclick="saveFees()">저장</button>
                 <span id="saveMsg" style="margin-left: 10px; font-size: 13px;"></span>
+            </div>
+        </div>
+
+        <!-- 마케팅 뷰 -->
+        <div id="marketingView" class="hidden">
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>🔥 요일 × 시간대 매출 히트맵</h2>
+                <p class="settings-note">전체 기간 누적. 진할수록 매출이 많은 시간대입니다. 칸에 마우스를 올리면 상세가 보입니다.</p>
+                <div style="overflow-x: auto;">
+                    <table class="heat-table" id="heatTable"></table>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card wide">
+                    <h3>📊 주별 채널 매출 추이 (최근 8주)</h3>
+                    <canvas id="channelTrendChart" height="100"></canvas>
+                </div>
+                <div class="chart-card wide">
+                    <h3>⭐ 리뷰이벤트 참여율 (주별)</h3>
+                    <canvas id="reviewChart" height="80"></canvas>
+                </div>
             </div>
         </div>
 
@@ -965,7 +1018,7 @@
         }
 
         function showView(viewId) {
-            ['dayView', 'historyView', 'statsView', 'profitView'].forEach(id => {
+            ['dayView', 'historyView', 'statsView', 'profitView', 'marketingView'].forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', id !== viewId);
             });
         }
@@ -2100,6 +2153,130 @@
             showView('profitView');
             document.getElementById('comparisonStrip').classList.add('hidden');
             renderProfit();
+        }
+
+        function showMarketing() {
+            currentMode = 'marketing';
+            setActiveTab('tab-marketing');
+            showView('marketingView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderMarketing();
+        }
+
+        // ===== 마케팅 =====
+        // 채널 고정 색상 (엔티티별 고정 - 필터/순위와 무관)
+        const CHANNEL_COLORS = {
+            '포장(매장)': '#8a4a1f',
+            '배달의민족': '#2ac1bc',
+            '배달의민족(가게배달)': '#93e0dd',
+            '쿠팡이츠': '#0074e9',
+            '요기요': '#fa0050',
+            '네이버주문': '#03c75a',
+            '땡겨요': '#f55a00'
+        };
+        const CHANNEL_ORDER = ['포장(매장)', '배달의민족', '배달의민족(가게배달)', '쿠팡이츠', '요기요', '네이버주문', '땡겨요'];
+
+        async function renderMarketing() {
+            const m = await loadJson('./processed/marketing_stats.json');
+            if (!m) {
+                document.getElementById('heatTable').innerHTML = '<tr><td class="empty-note">통계 데이터가 없습니다 (22:01 아카이브 후 생성됩니다)</td></tr>';
+                return;
+            }
+
+            // ---- 1. 요일x시간 히트맵 (11시~22시) ----
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const dowOrder = [2, 3, 4, 5, 6, 0, 1]; // 화수목금토일월 (영업 흐름 순)
+            const hours = [];
+            for (let h = 11; h <= 22; h++) hours.push(h);
+
+            let maxAmt = 0;
+            dowOrder.forEach(d => hours.forEach(h => { maxAmt = Math.max(maxAmt, m.heat_amount[d][h]); }));
+
+            let ht = '<tr><th></th>' + dowOrder.map(d => `<th>${dayNames[d]}</th>`).join('') + '</tr>';
+            hours.forEach(h => {
+                ht += `<tr><th>${h}시</th>`;
+                dowOrder.forEach(d => {
+                    const amt = m.heat_amount[d][h];
+                    const cnt = m.heat_count[d][h];
+                    const ratio = maxAmt > 0 ? amt / maxAmt : 0;
+                    const alpha = amt > 0 ? 0.08 + ratio * 0.92 : 0;
+                    const txtColor = ratio > 0.55 ? 'white' : '#5a4436';
+                    const label = amt > 0 ? (amt / 10000).toFixed(0) : '';
+                    ht += `<td class="heat-cell" style="background: rgba(80,17,0,${alpha.toFixed(3)}); color: ${txtColor};"
+                        title="${dayNames[d]}요일 ${h}시 · 누적 ${amt.toLocaleString()}원 (${cnt}건)">${label}</td>`;
+                });
+                ht += '</tr>';
+            });
+            document.getElementById('heatTable').innerHTML = ht;
+
+            // ---- 2. 주별 채널 매출 추이 (최근 8주, 누적 막대) ----
+            const weeks = Object.keys(m.weekly_channel).sort().slice(-8);
+            const datasets = CHANNEL_ORDER
+                .filter(ch => weeks.some(w => m.weekly_channel[w][ch]))
+                .map(ch => ({
+                    label: ch,
+                    data: weeks.map(w => m.weekly_channel[w][ch] || 0),
+                    backgroundColor: CHANNEL_COLORS[ch] || '#999',
+                    borderColor: '#ffffff',
+                    borderWidth: 1
+                }));
+
+            drawChart('channelTrendChart', {
+                type: 'bar',
+                data: { labels: weeks.map(w => w.replace(/^\d+-W/, '') + '주차'), datasets: datasets },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, ticks: { callback: v => (v / 10000) + '만' } }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                        tooltip: {
+                            callbacks: { label: ctx => `${ctx.dataset.label}: ${(ctx.parsed.y || 0).toLocaleString()}원` }
+                        }
+                    }
+                }
+            });
+
+            // ---- 3. 리뷰이벤트 참여율 (주별 %) ----
+            const rWeeks = Object.keys(m.review_weekly).sort().slice(-8);
+            const rates = rWeeks.map(w => {
+                const r = m.review_weekly[w];
+                return r.orders > 0 ? +(r.review / r.orders * 100).toFixed(1) : 0;
+            });
+
+            drawChart('reviewChart', {
+                type: 'line',
+                data: {
+                    labels: rWeeks.map(w => w.replace(/^\d+-W/, '') + '주차'),
+                    datasets: [{
+                        label: '리뷰이벤트 참여율',
+                        data: rates,
+                        borderColor: '#8a4a1f',
+                        backgroundColor: 'rgba(138,74,31,0.12)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const w = rWeeks[ctx.dataIndex];
+                                    const r = m.review_weekly[w];
+                                    return `참여율 ${ctx.parsed.y}% (${r.review}/${r.orders}건)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: { y: { ticks: { callback: v => v + '%' }, beginAtZero: true } }
+                }
+            });
         }
 
         // ===== 초기 로드 + 자동 갱신 =====
