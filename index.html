@@ -574,6 +574,20 @@
             border-top: 2px solid #e5d9d0;
         }
 
+        /* 첫 열(채널명) 고정 - 가로 스크롤해도 채널이 항상 보임 */
+        .fee-table th:first-child,
+        .fee-table td:first-child {
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 1;
+        }
+
+        .fee-table th:first-child,
+        .fee-table tr.total-row td:first-child {
+            background: #faf7f5;
+        }
+
         .fee-table .net-cell { color: #2b8a3e; font-weight: bold; }
         .fee-table .fee-cell { color: #e03131; }
 
@@ -700,6 +714,23 @@
             .cal-cnt-mini { display: block; font-size: 8.5px; }
 
             .cal-nav-btn { padding: 4px 10px; }
+
+            /* 순익 탭: 표/설정폼 축소 */
+            .fee-table th, .fee-table td {
+                padding: 7px 6px;
+                font-size: 11.5px;
+            }
+
+            .profit-summary { grid-template-columns: 1fr 1fr; }
+            .profit-summary .summary-card.total-amount { grid-column: 1 / -1; }
+
+            .fee-setting-row { gap: 5px; }
+            .fee-setting-row label { min-width: 96px; font-size: 12px; }
+            .fee-setting-row input { width: 58px !important; padding: 5px 4px; font-size: 12px; }
+            .fee-setting-row .unit { width: auto; font-size: 10px; }
+
+            .orders-section { padding: 11px; }
+            .save-btn { padding: 8px 16px; font-size: 13px; }
         }
     </style>
 </head>
@@ -1544,7 +1575,7 @@
 
             // 채널 테이블 (항목별 분해)
             const chNames = Object.keys(rows).sort((a, b) => rows[b].gross - rows[a].gross);
-            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>중개</th><th>결제</th><th>배달비</th><th>광고</th><th>부가세</th><th>실수령</th><th>재료비</th><th>마진</th><th>마진률</th></tr>';
+            let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>마진</th><th>마진률</th><th>중개</th><th>결제</th><th>배달비</th><th>광고</th><th>부가세</th><th>실수령</th><th>재료비</th></tr>';
             chNames.forEach(ch => {
                 const r = rows[ch];
                 const chMargin = r.net - r.mat;
@@ -1553,6 +1584,8 @@
                     <td>${ch}</td>
                     <td>${r.count}건</td>
                     <td>${r.gross.toLocaleString()}</td>
+                    <td class="net-cell">${chMargin.toLocaleString()}</td>
+                    <td class="net-cell">${mRate}%</td>
                     <td class="fee-cell">${r.med ? '-' + r.med.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.pay ? '-' + r.pay.toLocaleString() : '·'}</td>
                     <td class="fee-cell">${r.del ? '-' + r.del.toLocaleString() : '·'}</td>
@@ -1560,8 +1593,6 @@
                     <td class="fee-cell">${r.vat ? '-' + r.vat.toLocaleString() : '·'}</td>
                     <td>${r.net.toLocaleString()}</td>
                     <td class="fee-cell">-${r.mat.toLocaleString()}</td>
-                    <td class="net-cell">${chMargin.toLocaleString()}</td>
-                    <td class="net-cell">${mRate}%</td>
                 </tr>`;
             });
             const totalMargin = net - totalMat;
@@ -1569,6 +1600,8 @@
             html += `<tr class="total-row">
                 <td>합계</td><td>${orders.length}건</td>
                 <td>${gross.toLocaleString()}</td>
+                <td class="net-cell">${totalMargin.toLocaleString()}</td>
+                <td class="net-cell">${totalRate}%</td>
                 <td class="fee-cell">-${tot.med.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.pay.toLocaleString()}</td>
                 <td class="fee-cell">-${tot.del.toLocaleString()}</td>
@@ -1576,8 +1609,6 @@
                 <td class="fee-cell">-${tot.vat.toLocaleString()}</td>
                 <td>${net.toLocaleString()}</td>
                 <td class="fee-cell">-${totalMat.toLocaleString()}</td>
-                <td class="net-cell">${totalMargin.toLocaleString()}</td>
-                <td class="net-cell">${totalRate}%</td>
             </tr>`;
             document.getElementById('feeTable').innerHTML = html;
 
