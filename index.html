@@ -524,6 +524,41 @@
             outline: 2px solid #8a4a1f;
         }
 
+        /* ---- 네이버 리뷰 ---- */
+        .review-card {
+            border: 1px solid #f0e8e2;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #fffdfb;
+        }
+
+        .review-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+            flex-wrap: wrap;
+        }
+
+        .review-stars {
+            color: #f5a623;
+            font-size: 13px;
+            letter-spacing: 1px;
+        }
+
+        .review-meta {
+            color: #999;
+            font-size: 11.5px;
+        }
+
+        .review-body {
+            color: #444;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
         .cal-month-total {
             text-align: right;
             margin-top: 10px;
@@ -966,6 +1001,12 @@
                     <canvas id="reviewChart" height="80"></canvas>
                 </div>
             </div>
+            <div class="orders-section" style="margin-top: 12px;">
+                <h2 id="naverReviewTitle">💬 네이버 방문자 리뷰</h2>
+                <div id="naverReviewList"></div>
+                <a href="https://m.place.naver.com/restaurant/2002834568/review/visitor" target="_blank"
+                   class="save-btn" style="display:inline-block; text-decoration:none; margin-top:10px;">네이버에서 전체 리뷰 보기</a>
+            </div>
         </div>
 
         <div class="refresh-info">
@@ -1114,8 +1155,11 @@
                 });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const isTodayDate = dateStr === todayStr();
-                await fetch('./api/refresh' + (isTodayDate ? '' : '?full=1'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-                if (!isTodayDate) alert('과거 날짜 건이라 1~2분 내 재정산 후 반영됩니다.');
+                const r2 = await fetch('./api/refresh' + (isTodayDate ? '' : '?full=1'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                if (!r2.ok) throw new Error('refresh ' + r2.status);
+                alert(isTodayDate
+                    ? (adding ? '✅ 선결제로 지정했습니다. 매출에서 제외됩니다.' : '✅ 선결제를 해제했습니다.')
+                    : '✅ 저장됐습니다. 과거 날짜 건이라 1~2분 내 재정산 후 반영됩니다.');
                 renderDay(dateStr);
             } catch (e) {
                 alert('저장 실패 - 매장 PC에서만 지정할 수 있습니다.');
@@ -2211,6 +2255,27 @@
         const CHANNEL_ORDER = ['포장(매장)', '배달의민족', '배달의민족(가게배달)', '쿠팡이츠', '요기요', '네이버주문', '땡겨요'];
 
         async function renderMarketing() {
+            // 네이버 리뷰 (marketing_stats와 독립적으로 렌더)
+            loadJson('./processed/reviews.json').then(rv => {
+                const list = document.getElementById('naverReviewList');
+                if (!rv || !rv.reviews || !rv.reviews.length) {
+                    list.innerHTML = '<div class="empty-note">리뷰 데이터가 아직 없습니다 (매일 22:01 수집)</div>';
+                    return;
+                }
+                document.getElementById('naverReviewTitle').textContent =
+                    `💬 네이버 방문자 리뷰 · 총 ${rv.total || '?'}개` +
+                    (rv.avg_rating_recent ? ` · 최근 평점 ★${rv.avg_rating_recent}` : '');
+                list.innerHTML = rv.reviews.map(r => `
+                    <div class="review-card">
+                        <div class="review-head">
+                            <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
+                            <span class="review-meta">${r.author} · 방문 ${r.visited || '-'}</span>
+                        </div>
+                        <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
+                    </div>
+                `).join('');
+            });
+
             const m = await loadJson('./processed/marketing_stats.json');
             if (!m) {
                 document.getElementById('heatTable').innerHTML = '<tr><td class="empty-note">통계 데이터가 없습니다 (22:01 아카이브 후 생성됩니다)</td></tr>';
