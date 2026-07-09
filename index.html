@@ -974,6 +974,7 @@
         let currentDate = null;             // 'date' 모드일 때 대상 날짜
         let renderSeq = 0;                  // 렌더 경쟁 방지 토큰 (탭 빠른 전환 시)
         const chartInstances = {};          // canvas id -> Chart (재생성 시 destroy)
+        const IS_LOCAL = ['localhost', '127.0.0.1'].indexOf(location.hostname) !== -1; // 매장 PC 여부
 
         // ===== 유틸 =====
         function fmtDate(d) {
@@ -1119,7 +1120,7 @@
                 ...o,
                 menus: o.items || o.menus || []
             }));
-            const activeOrders = orders.filter(o => !o.cancelled); // 취소 건 제외한 유효 주문
+            const activeOrders = orders.filter(o => !o.cancelled && !o.prepaid); // 취소·선결제 제외한 유효 주문
 
             const isToday = dateStr === todayStr();
             document.getElementById('ordersTitle').textContent =
