@@ -820,6 +820,7 @@
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
             <button class="view-tab" id="tab-profit" onclick="showProfit()">순익</button>
             <button class="view-tab" id="tab-marketing" onclick="showMarketing()">마케팅</button>
+            <button class="view-tab" id="tab-prepaidview" onclick="showPrepaidTab()">선결제</button>
         </div>
 
         <!-- 오늘 vs 어제 비교 -->
@@ -984,6 +985,10 @@
 
         <!-- 마케팅 뷰 -->
         <div id="marketingView" class="hidden">
+            <div class="orders-section" style="margin-bottom: 12px; border-left: 4px solid #8a4a1f;">
+                <h2 id="advisorTitle">🧠 마케팅 어드바이저</h2>
+                <div id="advisorBox"><div class="empty-note">첫 브리핑 생성 중... (매주 화요일 10:30 자동 분석)</div></div>
+            </div>
             <div class="orders-section" style="margin-bottom: 12px;">
                 <h2>🔥 요일 × 시간대 매출 히트맵</h2>
                 <p class="settings-note">전체 기간 누적. 진할수록 매출이 많은 시간대입니다. 칸에 마우스를 올리면 상세가 보입니다.</p>
@@ -1006,6 +1011,19 @@
                 <div id="naverReviewList"></div>
                 <a href="https://m.place.naver.com/restaurant/2002834568/review/visitor" target="_blank"
                    class="save-btn" style="display:inline-block; text-decoration:none; margin-top:10px;">네이버에서 전체 리뷰 보기</a>
+            </div>
+        </div>
+
+        <!-- 선결제 뷰 -->
+        <div id="prepaidView" class="hidden">
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>💰 납품 대기 중인 선결제</h2>
+                <p class="settings-note">결제일 매출에서 제외된 건들입니다. 물건을 내어준 날 "납품 완료"를 누르면 그날 매출로 인식됩니다.</p>
+                <div id="prepaidPending"></div>
+            </div>
+            <div class="orders-section">
+                <h2>📦 납품 완료 (매출 인식됨)</h2>
+                <div id="prepaidDone"></div>
             </div>
         </div>
 
@@ -1065,7 +1083,7 @@
         }
 
         function showView(viewId) {
-            ['dayView', 'historyView', 'statsView', 'profitView', 'marketingView'].forEach(id => {
+            ['dayView', 'historyView', 'statsView', 'profitView', 'marketingView', 'prepaidView'].forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', id !== viewId);
             });
         }
@@ -1140,30 +1158,128 @@
         }
 
         // ===== 일별 뷰 렌더링 =====
-        // ===== 선결제 지정/해제 (매장 PC 전용) =====
+        // ===== 선결제 지정/해제/납품 (매장 PC 전용) =====
+        async function savePrepaidAndRefresh(cfg, needFull, doneMsg) {
+            const resp = await fetch('./api/save-prepaid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cfg)
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const r2 = await fetch('./api/refresh' + (needFull ? '?full=1' : ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            if (!r2.ok) throw new Error('refresh ' + r2.status);
+            if (doneMsg) alert(doneMsg);
+        }
+
         async function togglePrepaid(dateStr, orderNo) {
             const cfg = (await loadJson('./processed/prepaid.json')) || { orders: [] };
             const i = cfg.orders.findIndex(e => e.date === dateStr && e.order_no === orderNo);
             const adding = i < 0;
-            if (adding) cfg.orders.push({ date: dateStr, order_no: orderNo });
-            else cfg.orders.splice(i, 1);
-            try {
-                let resp = await fetch('./api/save-prepaid', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(cfg)
+            if (adding) {
+                // 현재 화면의 주문에서 상세 캡처
+                const src = (window._dayData && window._dayData.orders || []).find(o => o.order_no === orderNo) || {};
+                const mains = ((src.items || []).filter(x => !x.is_option).map(x => x.name + (x.qty > 1 ? ' x' + x.qty : ''))).join(' + ');
+                const memo = prompt('메모 (예: 7/15 단체 납품 예정)', '') || '';
+                cfg.orders.push({
+                    date: dateStr, order_no: orderNo,
+                    amount: src.amount || 0, channel: src.channel || '포장(매장)',
+                    summary: mains || '선결제 건', memo: memo,
+                    status: 'pending', delivered_date: null
                 });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            } else {
+                cfg.orders.splice(i, 1);
+            }
+            try {
                 const isTodayDate = dateStr === todayStr();
-                const r2 = await fetch('./api/refresh' + (isTodayDate ? '' : '?full=1'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-                if (!r2.ok) throw new Error('refresh ' + r2.status);
-                alert(isTodayDate
-                    ? (adding ? '✅ 선결제로 지정했습니다. 매출에서 제외됩니다.' : '✅ 선결제를 해제했습니다.')
-                    : '✅ 저장됐습니다. 과거 날짜 건이라 1~2분 내 재정산 후 반영됩니다.');
+                await savePrepaidAndRefresh(cfg, !isTodayDate,
+                    adding ? '✅ 선결제로 지정했습니다. [선결제] 탭에서 관리하세요.' : '✅ 선결제를 해제했습니다.'
+                    + (isTodayDate ? '' : ' (과거 날짜는 1~2분 내 재정산)'));
                 renderDay(dateStr);
             } catch (e) {
                 alert('저장 실패 - 매장 PC에서만 지정할 수 있습니다.');
             }
+        }
+
+        // 납품 완료 -> 지정한 날짜(기본 오늘) 매출로 인식
+        async function deliverPrepaid(dateStr, orderNo, askDate) {
+            const cfg = (await loadJson('./processed/prepaid.json')) || { orders: [] };
+            const e = cfg.orders.find(x => x.date === dateStr && x.order_no === orderNo);
+            if (!e) return;
+            let dDate = todayStr();
+            if (askDate) {
+                const inp = prompt('매출로 인식할 날짜 (YYYY-MM-DD)', todayStr());
+                if (!inp || !/^\d{4}-\d{2}-\d{2}$/.test(inp)) { alert('날짜 형식이 올바르지 않습니다.'); return; }
+                dDate = inp;
+            }
+            e.status = 'delivered';
+            e.delivered_date = dDate;
+            try {
+                await savePrepaidAndRefresh(cfg, dDate !== todayStr(),
+                    `✅ 납품 완료! ${dDate} 매출로 인식됩니다.` + (dDate !== todayStr() ? ' (1~2분 내 재정산)' : ''));
+                renderPrepaidTab();
+            } catch (err) { alert('저장 실패 - 매장 PC에서만 가능합니다.'); }
+        }
+
+        // 납품 완료 취소 (다시 대기로)
+        async function undeliverPrepaid(dateStr, orderNo) {
+            const cfg = (await loadJson('./processed/prepaid.json')) || { orders: [] };
+            const e = cfg.orders.find(x => x.date === dateStr && x.order_no === orderNo);
+            if (!e) return;
+            e.status = 'pending';
+            e.delivered_date = null;
+            try {
+                await savePrepaidAndRefresh(cfg, true, '↩️ 대기 상태로 되돌렸습니다. (1~2분 내 재정산)');
+                renderPrepaidTab();
+            } catch (err) { alert('저장 실패 - 매장 PC에서만 가능합니다.'); }
+        }
+
+        function showPrepaidTab() {
+            currentMode = 'prepaidtab';
+            setActiveTab('tab-prepaidview');
+            showView('prepaidView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderPrepaidTab();
+        }
+
+        async function renderPrepaidTab() {
+            const cfg = (await loadJson('./processed/prepaid.json')) || { orders: [] };
+            const pending = cfg.orders.filter(e => e.status !== 'delivered');
+            const done = cfg.orders.filter(e => e.status === 'delivered')
+                .sort((a, b) => (b.delivered_date || '').localeCompare(a.delivered_date || ''));
+
+            const pBox = document.getElementById('prepaidPending');
+            pBox.innerHTML = pending.length === 0
+                ? '<div class="empty-note">대기 중인 선결제 건이 없습니다</div>'
+                : pending.map(e => `
+                    <div class="history-row" style="border-left: 4px solid #7048e8;">
+                        <div class="history-top">
+                            <span class="history-date">${e.date} 결제 · ${e.channel}</span>
+                            <span class="history-amount">${(e.amount || 0).toLocaleString()}원</span>
+                        </div>
+                        <div class="history-meta">${e.summary || ''}${e.memo ? ' · 📝 ' + e.memo : ''}</div>
+                        ${IS_LOCAL ? `
+                        <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
+                            <button class="save-btn" style="padding:6px 14px; font-size:12px; background:#2b8a3e;" onclick="deliverPrepaid('${e.date}','${e.order_no}',false)">📦 오늘 납품 완료</button>
+                            <button class="save-btn" style="padding:6px 14px; font-size:12px; background:#8a4a1f;" onclick="deliverPrepaid('${e.date}','${e.order_no}',true)">다른 날짜로...</button>
+                            <button class="save-btn" style="padding:6px 14px; font-size:12px; background:#868e96;" onclick="togglePrepaid('${e.date}','${e.order_no}')">지정 해제</button>
+                        </div>` : ''}
+                    </div>`).join('');
+
+            const dBox = document.getElementById('prepaidDone');
+            dBox.innerHTML = done.length === 0
+                ? '<div class="empty-note">납품 완료된 건이 없습니다</div>'
+                : done.map(e => `
+                    <div class="history-row" style="border-left: 4px solid #2b8a3e; opacity: 0.85;">
+                        <div class="history-top">
+                            <span class="history-date">${e.delivered_date} 납품 (결제 ${e.date})</span>
+                            <span class="history-amount">${(e.amount || 0).toLocaleString()}원</span>
+                        </div>
+                        <div class="history-meta">${e.summary || ''}${e.memo ? ' · 📝 ' + e.memo : ''}</div>
+                        ${IS_LOCAL ? `
+                        <div style="margin-top: 6px;">
+                            <button class="save-btn" style="padding:5px 12px; font-size:11px; background:#868e96;" onclick="undeliverPrepaid('${e.date}','${e.order_no}')">↩️ 납품 취소</button>
+                        </div>` : ''}
+                    </div>`).join('');
         }
 
         function toggleOrder(index) {
@@ -1188,6 +1304,7 @@
             }
 
             const summary = data.summary || {};
+            window._dayData = data; // 선결제 지정 시 주문 상세 캡처용
             const orders = (data.orders || []).map(o => ({
                 ...o,
                 menus: o.items || o.menus || []
@@ -1408,6 +1525,7 @@
                                 </span>
                                 ${order.cancelled ? '<span class="cancel-badge">❌ 취소</span>' : ''}
                                 ${order.prepaid ? '<span class="cancel-badge" style="background:#7048e8;">💰 선결제</span>' : ''}
+                                ${order.recognized ? '<span class="cancel-badge" style="background:#2b8a3e;">📦 선결제 납품</span>' : ''}
                                 <span class="order-time-channel">
                                     ${order.channel} • ${order.time}
                                 </span>
@@ -1426,7 +1544,7 @@
                                     </div>
                                 `).join('')}
                             </div>
-                            ${IS_LOCAL ? `<button class="save-btn" style="margin-top:8px; padding:5px 14px; font-size:11px; background:${order.prepaid ? '#868e96' : '#7048e8'};" onclick="togglePrepaid('${data.date}','${order.order_no}')">${order.prepaid ? '선결제 해제' : '💰 선결제로 지정 (매출 제외)'}</button>` : ''}
+                            ${IS_LOCAL && !order.recognized ? `<button class="save-btn" style="margin-top:8px; padding:5px 14px; font-size:11px; background:${order.prepaid ? '#868e96' : '#7048e8'};" onclick="togglePrepaid('${data.date}','${order.order_no}')">${order.prepaid ? '선결제 해제' : '💰 선결제로 지정 (매출 제외)'}</button>` : ''}
                         </div>
                     </div>
                 `).join('');
