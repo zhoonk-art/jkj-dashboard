@@ -939,6 +939,14 @@
                 </div>
             </div>
 
+            <div class="orders-section" style="margin-top: 12px; margin-bottom: 12px;">
+                <h2>📋 메뉴별 마진표 (매장 판매가 기준)</h2>
+                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). 배달앱 판매 시 수수료가 추가로 빠집니다.</p>
+                <div style="overflow-x: auto;">
+                    <table class="fee-table" id="menuMarginTable"></table>
+                </div>
+            </div>
+
             <div class="summary-grid profit-summary" style="margin-top: 12px;">
                 <div class="summary-card">
                     <h3>이번 달 실수령 누계</h3>
@@ -1340,8 +1348,8 @@
             const avgValue = orderCount > 0 ? Math.round(totalAmount / orderCount) : 0;
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
-            // 총매출/포장/배달 카드에 예상 마진 + 마진률 병기
-            Promise.all([loadFees(), loadMenuCosts()]).then(() => {
+            // 총매출/포장/배달 카드에 예상 마진 + 마진률 병기 (인건비 포함)
+            Promise.all([loadFees(), loadMenuCosts(), loadCosts()]).then(() => {
                 let netSum = 0, matSum = 0;
                 const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
                 activeOrders.forEach(o => {
@@ -1352,11 +1360,13 @@
                     t.margin += n - c;
                     t.gross += o.amount;
                 });
-                const margin = netSum - matSum;
+                // 하루 인건비 (시급 x 시간)
+                const laborDay = (costsConfig.labor || []).reduce((s, l) => s + Math.round((l.hourly || 0) * (l.hours || 0)), 0);
+                const margin = netSum - matSum - laborDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
                     activeOrders.length > 0
-                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}%)`
+                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}% · 인건비 반영)`
                         : '';
 
                 // 포장/배달 카드: 금액 옆에 마진률
@@ -1431,7 +1441,7 @@
             // 판매 구성: 마리 수 & 맛 선택 카운팅
             const EXCLUDE_NAME = /다음에|리뷰|주세요|빼주|시즈닝|소떡|치킨무|감자|닭껍질|샐러드|치즈볼|떡사리|콜라|스프라이트|사이다|즉석밥/;
             const SIZE_RE = /(반마리|한마리|두마리)/;
-            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리', '새우 6p', '새우 12p', '새우 24p'];
+            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리', '새우 6p', '새우 12p', '새우 24p', '세트'];
             const FLAVOR_BUCKETS = ['달콤양념', '후라이드', '매콤양념', '매콤간장'];
             const sizeCounts = {};
             SIZE_BUCKETS.forEach(k => { sizeCounts[k] = 0; });
@@ -1469,18 +1479,27 @@
                     const nameSize = name.match(SIZE_RE);
                     const size = nameSize ? nameSize[1] : optSize;
 
-                    // 마리 수 버킷 (닭)
-                    let bucket = null;
-                    if (banban) bucket = (size === '두마리') ? '두마리' : '한마리 반/반';
-                    else if (size) bucket = size;
-                    if (bucket) sizeCounts[bucket] += (menu.qty || 1);
+                    // 세트 메뉴는 '세트'로만 집계 (닭+새우 조합, +떡볶이, SET 표기)
+                    const isSet = /SET|세트/i.test(name) || /\+/.test(name) ||
+                        (/새우/.test(name) && /닭/.test(name)) ||
+                        (/떡볶이/.test(name) && /닭강정|새우/.test(name));
 
-                    // 새우강정 (단품/세트 모두 새우 구성으로 집계)
-                    if (/새우/.test(name)) {
-                        const so = menus.find(m => m.is_option && /(24|12|6)\s*p/i.test(m.name));
-                        const src = name + ' ' + (so ? so.name : '');
-                        const sp = /24/.test(src) ? '24p' : /12/.test(src) ? '12p' : '6p';
-                        sizeCounts['새우 ' + sp] += (menu.qty || 1);
+                    if (isSet) {
+                        sizeCounts['세트'] += (menu.qty || 1);
+                    } else {
+                        // 마리 수 버킷 (닭)
+                        let bucket = null;
+                        if (banban) bucket = (size === '두마리') ? '두마리' : '한마리 반/반';
+                        else if (size) bucket = size;
+                        if (bucket) sizeCounts[bucket] += (menu.qty || 1);
+
+                        // 새우강정 단품
+                        if (/새우/.test(name)) {
+                            const so = menus.find(m => m.is_option && /(24|12|6)\s*p/i.test(m.name));
+                            const src = name + ' ' + (so ? so.name : '');
+                            const sp = /24/.test(src) ? '24p' : /12/.test(src) ? '12p' : '6p';
+                            sizeCounts['새우 ' + sp] += (menu.qty || 1);
+                        }
                     }
 
                     // 맛 (옵션에 맛 정보가 없던 주문만 상품명에서)
@@ -1884,7 +1903,8 @@
                 }).join('') +
                 `<p class="settings-note" style="margin-top:8px;">부가세는 네 항목 합계의 10%로 자동 계산됩니다. 광고%는 매출연동 광고(쿠팡 등)에만 사용하세요.</p>`;
 
-            // ----- 운영비 + 이번 달 손익 -----
+            // ----- 메뉴 마진표 + 운영비 + 이번 달 손익 -----
+            renderMenuMarginTable();
             await loadCosts();
             renderCostSettings();
             renderMenuCostSettings();
@@ -2138,6 +2158,64 @@
                 msg.style.color = '#e03131';
             }
             setTimeout(() => { msg.textContent = ''; }, 4000);
+        }
+
+        // ----- 메뉴 단위 원가 (마진표용, 양념 소스 기준) -----
+        function menuUnitCost(name) {
+            if (!menuCosts) return null;
+            const mc = menuCosts;
+            let cost = 0;
+            const banban = /반\s*\/\s*반|반반/.test(name);
+            let sizeM = name.match(/(반마리|한마리|두마리)/);
+            const tteok = /떡볶이/.test(name);
+            const hasShrimp = /새우/.test(name);
+            let hasChicken = /닭/.test(name);
+            if (hasChicken && !sizeM && !banban) sizeM = ['반마리', '반마리']; // "닭강정+떡볶이" 류는 반마리 기준
+            let menuCount = 0;
+
+            if (hasChicken && (sizeM || banban)) {
+                const sz = sizeM ? sizeM[1] : '한마리';
+                cost += mc.chicken_base[sz] || 0;
+                cost += banban ? (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) : (mc.box[sz] || 0);
+                const halves = sz === '두마리' ? 4 : sz === '한마리' ? 2 : banban ? 2 : 1;
+                cost += (mc.sauce_per_half['달콤양념'] || 0) * halves;
+                menuCount++;
+            }
+            if (hasShrimp) {
+                const spM = name.match(/(6|12|24)\s*p/i);
+                const sp = spM ? spM[1].toLowerCase() + 'p' : (/대/.test(name) ? '24p' : /중/.test(name) ? '12p' : '6p');
+                cost += mc.shrimp[sp] || 0;
+                cost += (sp === '6p' ? mc.box['반마리'] : sp === '12p' ? mc.box['한마리'] : mc.box['두마리']);
+                const sh = sp === '24p' ? 4 : sp === '12p' ? 2 : 1;
+                cost += (mc.sauce_per_half['달콤양념'] || 0) * sh;
+                menuCount++;
+            }
+            if (tteok) cost += (mc.sides['떡볶이'] || 0);
+            if (menuCount === 0 && !tteok) return null;
+
+            cost += (mc.per_menu['치킨무'] || 0) * Math.max(1, menuCount);
+            cost += (mc.per_order['식용유'] || 0) + (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
+            return cost;
+        }
+
+        function renderMenuMarginTable() {
+            const tbl = document.getElementById('menuMarginTable');
+            if (!tbl || !menuCosts || !menuCosts.menu_prices) return;
+            let html = '<tr><th>메뉴</th><th>판매가</th><th>재료 원가</th><th>마진</th><th>마진률</th></tr>';
+            menuCosts.menu_prices.forEach(mn => {
+                const c = menuUnitCost(mn.name);
+                if (c === null) return;
+                const mg = mn.price - c;
+                const rate = (mg / mn.price * 100).toFixed(1);
+                html += `<tr>
+                    <td>${mn.name}</td>
+                    <td>${mn.price.toLocaleString()}</td>
+                    <td class="fee-cell">-${c.toLocaleString()}</td>
+                    <td class="net-cell">${mg.toLocaleString()}</td>
+                    <td class="net-cell">${rate}%</td>
+                </tr>`;
+            });
+            tbl.innerHTML = html;
         }
 
         // ===== 운영비 (월 고정비 + 인건비) =====
