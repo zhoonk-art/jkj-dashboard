@@ -1741,13 +1741,12 @@
                     weekly[w] = (weekly[w] || 0) + wt[w];
                 });
             });
-            const weekKeys = Object.keys(weekly).sort((a, b) =>
-                parseInt(a.replace('week_', '')) - parseInt(b.replace('week_', ''))).slice(-12); // 최근 12주만
+            const weekKeys = Object.keys(weekly).sort().slice(-12); // 문자열 정렬 = year_week 순, 최근 12주만
 
             drawChart('weeklyChart', {
                 type: 'bar',
                 data: {
-                    labels: weekKeys.map(w => w.replace('week_', '') + '주차'),
+                    labels: weekKeys.map(w => w.replace(/^week_\d+_/, '') + '주차'),
                     datasets: [{
                         label: '주 매출',
                         data: weekKeys.map(w => weekly[w]),
