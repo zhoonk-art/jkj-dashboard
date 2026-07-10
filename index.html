@@ -1441,7 +1441,8 @@
             // 판매 구성: 마리 수 & 맛 선택 카운팅
             const EXCLUDE_NAME = /다음에|리뷰|주세요|빼주|시즈닝|소떡|치킨무|감자|닭껍질|샐러드|치즈볼|떡사리|콜라|스프라이트|사이다|즉석밥/;
             const SIZE_RE = /(반마리|한마리|두마리)/;
-            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리', '새우 6p', '새우 12p', '새우 24p', '세트'];
+            const SET_NAMES = ['닭강정 반마리+떡볶이', '새우강정 6p+떡볶이', '닭강정+떡볶이', '왕새우강정+떡볶이', '닭 반마리+새우 소(6p)', '닭 한마리+새우 중(12p)', '기타 세트'];
+            const SIZE_BUCKETS = ['반마리', '한마리', '한마리 반/반', '두마리', '새우 6p', '새우 12p', '새우 24p', ...SET_NAMES];
             const FLAVOR_BUCKETS = ['달콤양념', '후라이드', '매콤양념', '매콤간장'];
             const sizeCounts = {};
             SIZE_BUCKETS.forEach(k => { sizeCounts[k] = 0; });
@@ -1479,13 +1480,25 @@
                     const nameSize = name.match(SIZE_RE);
                     const size = nameSize ? nameSize[1] : optSize;
 
-                    // 세트 메뉴는 '세트'로만 집계 (닭+새우 조합, +떡볶이, SET 표기)
+                    // 세트 메뉴는 실제 세트명으로 세분화 집계 (닭+새우 조합, +떡볶이, SET 표기)
                     const isSet = /SET|세트/i.test(name) || /\+/.test(name) ||
                         (/새우/.test(name) && /닭/.test(name)) ||
                         (/떡볶이/.test(name) && /닭강정|새우/.test(name));
 
                     if (isSet) {
-                        sizeCounts['세트'] += (menu.qty || 1);
+                        // 정규화된 이름과 가장 가까운 등록 세트명 매칭
+                        const norm = name.replace(/\s+/g, '');
+                        let matched = SET_NAMES.find(s => norm.includes(s.replace(/\s+/g, '')) || s.replace(/\s+/g, '').includes(norm));
+                        if (!matched) {
+                            // 부분 키워드로 재시도 (예: "닭강정 두마리+새우 중(12p)" 같은 변형)
+                            if (/새우.*떡볶이|왕새우/.test(name)) matched = '왕새우강정+떡볶이';
+                            else if (/닭.*새우/.test(name) && /12|중/.test(name)) matched = '닭 한마리+새우 중(12p)';
+                            else if (/닭.*새우/.test(name)) matched = '닭 반마리+새우 소(6p)';
+                            else if (/새우.*떡볶이/.test(name)) matched = '새우강정 6p+떡볶이';
+                            else if (/닭.*떡볶이/.test(name)) matched = '닭강정+떡볶이';
+                            else matched = '기타 세트';
+                        }
+                        sizeCounts[matched] += (menu.qty || 1);
                     } else {
                         // 마리 수 버킷 (닭)
                         let bucket = null;
@@ -1729,7 +1742,7 @@
                 });
             });
             const weekKeys = Object.keys(weekly).sort((a, b) =>
-                parseInt(a.replace('week_', '')) - parseInt(b.replace('week_', '')));
+                parseInt(a.replace('week_', '')) - parseInt(b.replace('week_', ''))).slice(-12); // 최근 12주만
 
             drawChart('weeklyChart', {
                 type: 'bar',
