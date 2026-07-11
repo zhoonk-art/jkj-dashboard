@@ -2628,7 +2628,7 @@
                     <div class="review-card">
                         <div class="review-head">
                             <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
-                            <span class="review-meta">[${r.channel || '?'}] ${r.date || ''}</span>
+                            <span class="review-meta">[${r.channel || '?'}] ${r.date || ''}${r.author ? ' · ' + r.author : ''}${r.menu ? ' · ' + r.menu : ''}</span>
                         </div>
                         <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
                     </div>
