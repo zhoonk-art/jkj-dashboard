@@ -945,7 +945,7 @@
 
             <div class="orders-section" style="margin-top: 12px; margin-bottom: 12px;">
                 <h2>📋 메뉴별 마진표 (매장 판매가 기준)</h2>
-                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). 배달앱 판매 시 수수료가 추가로 빠집니다.</p>
+                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). 포장 마진은 재료비만 차감, 배달 마진은 배달의민족 앱주문 기준(중개 7.8%+결제 3.0%+배달비 3,400원+부가세) 수수료까지 차감한 값입니다 — 채널에 따라 실제 마진은 이보다 다소 높거나(가게배달·땡겨요) 낮을(쿠팡이츠 광고비 별도) 수 있습니다.</p>
                 <div style="overflow-x: auto;">
                     <table class="fee-table" id="menuMarginTable"></table>
                 </div>
@@ -2256,21 +2256,36 @@
             return cost;
         }
 
+        // 배달앱(배달의민족 기준) 주문 1건으로 이 메뉴 하나만 시켰을 때의 실수령 = 판매가 - 중개 - 결제 - 배달비 - 부가세
+        function deliveryNetFor(price) {
+            const f = feeFor('배달의민족');
+            const med = Math.round(price * f.med / 100);
+            const pay = Math.round(price * f.pay / 100);
+            const del = f.del;
+            const vat = Math.round((med + pay + del) * 0.1);
+            return price - med - pay - del - vat;
+        }
+
         function renderMenuMarginTable() {
             const tbl = document.getElementById('menuMarginTable');
             if (!tbl || !menuCosts || !menuCosts.menu_prices) return;
-            let html = '<tr><th>메뉴</th><th>판매가</th><th>재료 원가</th><th>마진</th><th>마진률</th></tr>';
+            let html = '<tr><th>메뉴</th><th>판매가</th><th>재료 원가</th><th>포장 마진</th><th>포장 마진률</th><th>배달 마진</th><th>배달 마진률</th></tr>';
             menuCosts.menu_prices.forEach(mn => {
                 const c = menuUnitCost(mn.name);
                 if (c === null) return;
                 const mg = mn.price - c;
                 const rate = (mg / mn.price * 100).toFixed(1);
+                const dNet = deliveryNetFor(mn.price);
+                const dMg = dNet - c;
+                const dRate = (dMg / mn.price * 100).toFixed(1);
                 html += `<tr>
                     <td>${mn.name}</td>
                     <td>${mn.price.toLocaleString()}</td>
                     <td class="fee-cell">-${c.toLocaleString()}</td>
                     <td class="net-cell">${mg.toLocaleString()}</td>
                     <td class="net-cell">${rate}%</td>
+                    <td class="net-cell">${dMg.toLocaleString()}</td>
+                    <td class="net-cell">${dRate}%</td>
                 </tr>`;
             });
             tbl.innerHTML = html;
