@@ -1369,13 +1369,14 @@
                     t.margin += n - c;
                     t.gross += o.amount;
                 });
-                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간)
+                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비(광고비 등)
                 const laborDay = laborForDate(dateStr);
-                const margin = netSum - matSum - laborDay;
+                const adDay = dailyFixedCost();
+                const margin = netSum - matSum - laborDay - adDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
                     activeOrders.length > 0
-                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}% · 인건비 반영)`
+                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}% · 인건비·광고비 반영)`
                         : '';
 
                 // 포장/배달 카드: 금액 옆에 마진률
@@ -1969,11 +1970,12 @@
 
             // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(오늘 실제 근무하는 직원만) 차감
             const laborDaily = laborForDate(todayStr());
-            const netMargin = net - totalMat - laborDaily;
+            const adDaily = dailyFixedCost();
+            const netMargin = net - totalMat - laborDaily - adDaily;
             const nmRate = gross > 0 ? (netMargin / gross * 100).toFixed(1) : 0;
             document.getElementById('profitNet').textContent = netMargin.toLocaleString() + '원';
             document.getElementById('profitNetSub').textContent =
-                `수수료·재료비·인건비(일 ${laborDaily.toLocaleString()}원) 차감 · 마진률 ${nmRate}%`;
+                `수수료·재료비·인건비(일 ${laborDaily.toLocaleString()}원)·광고비(일 ${adDaily.toLocaleString()}원) 차감 · 마진률 ${nmRate}%`;
 
             const m = await calcMonthNet();
             document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
@@ -2305,6 +2307,14 @@
             return sum;
         }
 
+        // daily:true로 표시된 고정비(광고비 등, 매일 실제로 나가는 비용)를 하루치로 환산해 합산
+        function dailyFixedCost() {
+            return (costsConfig.fixed || []).reduce((s, f) => {
+                if (!f.daily) return s;
+                return s + Math.round((f.amount || 0) / 30);
+            }, 0);
+        }
+
         // 이번 달 실수령 누계 (아카이브 각 날짜의 채널별 합계에 수수료 적용 + 오늘)
         async function calcMonthNet() {
             const ym = todayStr().substring(0, 7);
@@ -2364,17 +2374,23 @@
             (costsConfig.fixed || []).forEach((f, i) => {
                 const name = document.getElementById('cost-name-' + i).value.trim();
                 const amount = parseInt(document.getElementById('cost-amt-' + i).value) || 0;
-                if (name) fixed.push({ name: name, amount: amount });
+                // 설정 화면엔 입력칸이 없는 daily 플래그는 원본값 그대로 보존 (안 그러면 저장할 때마다 사라짐)
+                if (name) fixed.push(f.daily ? { name: name, amount: amount, daily: true } : { name: name, amount: amount });
             });
             const labor = [];
             (costsConfig.labor || []).forEach((l, i) => {
                 const name = document.getElementById('labor-name-' + i).value.trim();
-                if (name) labor.push({
-                    name: name,
-                    hourly: parseInt(document.getElementById('labor-hourly-' + i).value) || 0,
-                    hours: parseFloat(document.getElementById('labor-hours-' + i).value) || 0,
-                    days: parseInt(document.getElementById('labor-days-' + i).value) || 0
-                });
+                if (name) {
+                    const entry = {
+                        name: name,
+                        hourly: parseInt(document.getElementById('labor-hourly-' + i).value) || 0,
+                        hours: parseFloat(document.getElementById('labor-hours-' + i).value) || 0,
+                        days: parseInt(document.getElementById('labor-days-' + i).value) || 0
+                    };
+                    // weekdays도 설정 화면엔 입력칸이 없어 원본값 그대로 보존
+                    if (Array.isArray(l.weekdays)) entry.weekdays = l.weekdays;
+                    labor.push(entry);
+                }
             });
             return { note: costsConfig.note || '', fixed: fixed, labor: labor };
         }
