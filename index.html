@@ -1364,8 +1364,8 @@
                     t.margin += n - c;
                     t.gross += o.amount;
                 });
-                // 하루 인건비 (시급 x 시간)
-                const laborDay = (costsConfig.labor || []).reduce((s, l) => s + Math.round((l.hourly || 0) * (l.hours || 0)), 0);
+                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간)
+                const laborDay = laborForDate(dateStr);
                 const margin = netSum - matSum - laborDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
@@ -1962,8 +1962,8 @@
             const mc = costsTotal();
             document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
 
-            // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(하루 근무분 = 시급x시간) 차감
-            const laborDaily = (costsConfig.labor || []).reduce((s, l) => s + Math.round((l.hourly || 0) * (l.hours || 0)), 0);
+            // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(오늘 실제 근무하는 직원만) 차감
+            const laborDaily = laborForDate(todayStr());
             const netMargin = net - totalMat - laborDaily;
             const nmRate = gross > 0 ? (netMargin / gross * 100).toFixed(1) : 0;
             document.getElementById('profitNet').textContent = netMargin.toLocaleString() + '원';
@@ -2282,6 +2282,15 @@
 
         function laborMonthly(l) {
             return Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
+        }
+
+        // 특정 날짜(dateStr, YYYY-MM-DD)에 실제로 근무하는 인건비만 합산 (weekdays 미지정 시 항상 포함)
+        function laborForDate(dateStr) {
+            const dow = new Date(dateStr + 'T00:00:00').getDay();
+            return (costsConfig.labor || []).reduce((s, l) => {
+                if (Array.isArray(l.weekdays) && !l.weekdays.includes(dow)) return s;
+                return s + Math.round((l.hourly || 0) * (l.hours || 0));
+            }, 0);
         }
 
         function costsTotal() {
