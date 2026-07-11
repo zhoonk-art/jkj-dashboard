@@ -2631,7 +2631,7 @@
                     const ratio = maxCnt > 0 ? cnt / maxCnt : 0;
                     const alpha = cnt > 0 ? 0.08 + ratio * 0.92 : 0;
                     const txtColor = ratio > 0.55 ? 'white' : '#5a4436';
-                    const label = cnt > 0 ? `${cnt}<br><span style="font-size:0.75em; opacity:0.8;">(${avg})</span>` : '';
+                    const label = cnt > 0 ? `${cnt} <span style="font-size:0.75em; opacity:0.8;">(${avg})</span>` : '';
                     ht += `<td class="heat-cell" style="background: rgba(80,17,0,${alpha.toFixed(3)}); color: ${txtColor};"
                         title="${dayNames[d]}요일 ${h}시 · 최근 3개월 총 ${cnt}건 · ${dayNames[d]}요일 ${occur}회 중 평균 ${avg}건">${label}</td>`;
                 });
