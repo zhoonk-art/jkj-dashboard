@@ -1002,8 +1002,8 @@
                 <div id="advisorBox"><div class="empty-note">첫 브리핑 생성 중... (매주 화요일 10:30 자동 분석)</div></div>
             </div>
             <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>🔥 요일 × 시간대 매출 히트맵</h2>
-                <p class="settings-note">전체 기간 누적. 진할수록 매출이 많은 시간대입니다. 칸에 마우스를 올리면 상세가 보입니다.</p>
+                <h2>🔥 요일 × 시간대 주문 건수 히트맵</h2>
+                <p class="settings-note">최근 3개월 누적. 진할수록 주문이 많은 시간대입니다. 칸에 마우스를 올리면 상세가 보입니다.</p>
                 <div style="overflow-x: auto;">
                     <table class="heat-table" id="heatTable"></table>
                 </div>
@@ -2616,21 +2616,24 @@
             const hours = [];
             for (let h = 11; h <= 22; h++) hours.push(h);
 
-            let maxAmt = 0;
-            dowOrder.forEach(d => hours.forEach(h => { maxAmt = Math.max(maxAmt, m.heat_amount[d][h]); }));
+            const heatCnt3m = m.heat_count_3m || m.heat_count; // 구버전 데이터 폴백
+            const dowOccur3m = m.dow_occurrences_3m || [13, 13, 13, 13, 13, 13, 13]; // 구버전 폴백(약 13주)
+            let maxCnt = 0;
+            dowOrder.forEach(d => hours.forEach(h => { maxCnt = Math.max(maxCnt, heatCnt3m[d][h]); }));
 
             let ht = '<tr><th></th>' + dowOrder.map(d => `<th>${dayNames[d]}</th>`).join('') + '</tr>';
             hours.forEach(h => {
                 ht += `<tr><th>${h}시</th>`;
                 dowOrder.forEach(d => {
-                    const amt = m.heat_amount[d][h];
-                    const cnt = m.heat_count[d][h];
-                    const ratio = maxAmt > 0 ? amt / maxAmt : 0;
-                    const alpha = amt > 0 ? 0.08 + ratio * 0.92 : 0;
+                    const cnt = heatCnt3m[d][h];
+                    const occur = dowOccur3m[d] || 1;
+                    const avg = cnt > 0 ? (cnt / occur).toFixed(1) : '';
+                    const ratio = maxCnt > 0 ? cnt / maxCnt : 0;
+                    const alpha = cnt > 0 ? 0.08 + ratio * 0.92 : 0;
                     const txtColor = ratio > 0.55 ? 'white' : '#5a4436';
-                    const label = amt > 0 ? (amt / 10000).toFixed(0) : '';
+                    const label = cnt > 0 ? `${cnt}<br><span style="font-size:0.75em; opacity:0.8;">(${avg})</span>` : '';
                     ht += `<td class="heat-cell" style="background: rgba(80,17,0,${alpha.toFixed(3)}); color: ${txtColor};"
-                        title="${dayNames[d]}요일 ${h}시 · 누적 ${amt.toLocaleString()}원 (${cnt}건)">${label}</td>`;
+                        title="${dayNames[d]}요일 ${h}시 · 최근 3개월 총 ${cnt}건 · ${dayNames[d]}요일 ${occur}회 중 평균 ${avg}건">${label}</td>`;
                 });
                 ht += '</tr>';
             });
