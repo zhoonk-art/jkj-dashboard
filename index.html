@@ -1024,6 +1024,11 @@
                 <a href="https://m.place.naver.com/restaurant/2002834568/review/visitor" target="_blank"
                    class="save-btn" style="display:inline-block; text-decoration:none; margin-top:10px;">네이버에서 전체 리뷰 보기</a>
             </div>
+            <div class="orders-section" style="margin-top: 12px;">
+                <h2 id="manualReviewTitle">🛵 배민 · 쿠팡이츠 리뷰 (수동 등록)</h2>
+                <p class="settings-note">배민/쿠팡이츠는 공개 웹페이지가 없어 자동 수집이 안 돼요. 대표님이 캡처/복붙으로 전달해주신 리뷰를 여기에 모아둡니다.</p>
+                <div id="manualReviewList"></div>
+            </div>
         </div>
 
         <!-- 선결제 뷰 -->
@@ -2572,6 +2577,27 @@
                         <div class="review-head">
                             <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
                             <span class="review-meta">${r.author} · 방문 ${r.visited || '-'}</span>
+                        </div>
+                        <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
+                    </div>
+                `).join('');
+            });
+
+            // 배민/쿠팡이츠 리뷰 (사장님이 직접 전달, 수동 등록)
+            loadJson('./processed/manual_reviews.json').then(mr => {
+                const list = document.getElementById('manualReviewList');
+                if (!mr || !mr.reviews || !mr.reviews.length) {
+                    list.innerHTML = '<div class="empty-note">아직 등록된 리뷰가 없습니다. 새 리뷰가 올라오면 캡처/텍스트로 전달해주세요.</div>';
+                    return;
+                }
+                const sorted = [...mr.reviews].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                document.getElementById('manualReviewTitle').textContent =
+                    `🛵 배민 · 쿠팡이츠 리뷰 (수동 등록) · 총 ${sorted.length}개`;
+                list.innerHTML = sorted.map(r => `
+                    <div class="review-card">
+                        <div class="review-head">
+                            <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
+                            <span class="review-meta">[${r.channel || '?'}] ${r.date || ''}</span>
                         </div>
                         <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
                     </div>
