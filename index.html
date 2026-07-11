@@ -2275,12 +2275,13 @@
                 if (c === null) return;
                 const mg = mn.price - c;
                 const rate = (mg / mn.price * 100).toFixed(1);
-                const dNet = deliveryNetFor(mn.price);
+                const dPrice = mn.delivery_price || mn.price; // 배달앱 정가(포장 3천원 할인 전). 확인된 메뉴만 delivery_price 등록
+                const dNet = deliveryNetFor(dPrice);
                 const dMg = dNet - c;
-                const dRate = (dMg / mn.price * 100).toFixed(1);
+                const dRate = (dMg / dPrice * 100).toFixed(1);
                 html += `<tr>
                     <td>${mn.name}</td>
-                    <td>${mn.price.toLocaleString()}</td>
+                    <td>${mn.price.toLocaleString()}${mn.delivery_price ? ` <span style="opacity:0.6; font-size:0.85em;">(배달 ${mn.delivery_price.toLocaleString()})</span>` : ''}</td>
                     <td class="fee-cell">-${c.toLocaleString()}</td>
                     <td class="net-cell">${mg.toLocaleString()}</td>
                     <td class="net-cell">${rate}%</td>
