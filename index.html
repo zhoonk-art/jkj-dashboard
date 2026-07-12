@@ -1436,7 +1436,7 @@
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
                     activeOrders.length > 0
-                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}% · 인건비·광고비·관리비 반영)`
+                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}%)`
                         : '';
 
                 // 포장/배달 카드: 금액 옆에 마진률
