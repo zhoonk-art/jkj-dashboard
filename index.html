@@ -908,6 +908,7 @@
                 </div>
                 <div class="chart-card wide">
                     <h3>🕐 시간대별 매출 (전체 기간 누적, 주문 접수시각 기준)</h3>
+                    <div id="hourlyDowFilter" style="display:flex; flex-wrap:wrap; gap:5px; margin:6px 0 10px;"></div>
                     <canvas id="hourlyChart" height="80"></canvas>
                 </div>
             </div>
@@ -1092,6 +1093,65 @@
             }
             const ctx = document.getElementById(canvasId).getContext('2d');
             chartInstances[canvasId] = new Chart(ctx, config);
+        }
+
+        // ----- 시간대별 매출: 요일 필터 -----
+        let hourlyDowSel = 'all'; // 'all' 또는 0(일)~6(토)
+        const HOURLY_DOW_OPTS = [['all', '전체'], [1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [0, '일']];
+
+        function renderHourlyDowFilter() {
+            const box = document.getElementById('hourlyDowFilter');
+            if (!box) return;
+            box.innerHTML = HOURLY_DOW_OPTS.map(([v, label]) => {
+                const on = String(hourlyDowSel) === String(v);
+                return `<button onclick="selectHourlyDow('${v}')" style="
+                    padding:4px 12px; border-radius:14px; font-size:12px; cursor:pointer;
+                    border:1px solid ${on ? '#8a4a1f' : '#ddd'};
+                    background:${on ? '#8a4a1f' : '#fff'}; color:${on ? '#fff' : '#666'};
+                    font-weight:${on ? 'bold' : 'normal'};">${label}</button>`;
+            }).join('');
+        }
+
+        function selectHourlyDow(v) {
+            hourlyDowSel = v === 'all' ? 'all' : parseInt(v);
+            renderHourlyDowFilter();
+            drawHourlyChart(hourlyDowSel);
+        }
+
+        function drawHourlyChart(dowSel) {
+            const heat = window._hourlyHeat;
+            if (!heat) return;
+            const hLabels = [], hData = [];
+            for (let h = 11; h <= 23; h++) {
+                hLabels.push(h + '시');
+                if (dowSel === 'all') {
+                    let sum = 0;
+                    for (let d = 0; d < 7; d++) sum += heat[d][h];
+                    hData.push(sum);
+                } else {
+                    hData.push(heat[dowSel][h]);
+                }
+            }
+            drawChart('hourlyChart', {
+                type: 'bar',
+                data: {
+                    labels: hLabels,
+                    datasets: [{
+                        label: '시간대 매출',
+                        data: hData,
+                        backgroundColor: '#f08c42',
+                        borderRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                    },
+                    scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
+                }
+            });
         }
 
         function setActiveTab(tabId) {
@@ -1773,39 +1833,12 @@
                 }
             });
 
-            // 시간대별 매출 (전체 기간 누적, marketing_stats의 heat_amount를 요일 합산)
+            // 시간대별 매출 (marketing_stats의 heat_amount, 요일 필터 가능)
             const mstats = await loadJson('./processed/marketing_stats.json');
             if (mstats && mstats.heat_amount) {
-                const hourTotals = [];
-                for (let h = 0; h < 24; h++) {
-                    let sum = 0;
-                    for (let d = 0; d < 7; d++) sum += mstats.heat_amount[d][h];
-                    hourTotals.push(sum);
-                }
-                // 영업시간대만 표시 (11~23시)
-                const hLabels = [], hData = [];
-                for (let h = 11; h <= 23; h++) { hLabels.push(h + '시'); hData.push(hourTotals[h]); }
-
-                drawChart('hourlyChart', {
-                    type: 'bar',
-                    data: {
-                        labels: hLabels,
-                        datasets: [{
-                            label: '시간대 매출',
-                            data: hData,
-                            backgroundColor: '#f08c42',
-                            borderRadius: 3
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
-                        },
-                        scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
-                    }
-                });
+                window._hourlyHeat = mstats.heat_amount;
+                renderHourlyDowFilter();
+                drawHourlyChart(hourlyDowSel);
             }
 
             // 월별 매출
