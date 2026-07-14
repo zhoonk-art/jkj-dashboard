@@ -1002,6 +1002,11 @@
                 <h2 id="advisorTitle">🧠 마케팅 어드바이저</h2>
                 <div id="advisorBox"><div class="empty-note">첫 브리핑 생성 중... (매주 화요일 10:30 자동 분석)</div></div>
             </div>
+            <div class="orders-section" style="margin-bottom: 12px; border-left: 4px solid #e8590c;">
+                <h2 id="chickenForecastTitle">🐔 내일 닭 준비량 예측</h2>
+                <p class="settings-note">3월부터의 요일별 실제 닭 사용량(주문 기준)으로 계산합니다. 단체·선결제 예약분은 별도로 더해주세요.</p>
+                <div id="chickenForecastBox"><div class="empty-note">데이터 준비 중... (22:30 아카이브 후 생성됩니다)</div></div>
+            </div>
             <div class="orders-section" style="margin-bottom: 12px;">
                 <h2>🔥 요일 × 시간대 주문 건수 히트맵</h2>
                 <p class="settings-note">최근 3개월 누적. 진할수록 주문이 많은 시간대입니다. 칸에 마우스를 올리면 상세가 보입니다.</p>
@@ -2582,6 +2587,69 @@
         };
         const CHANNEL_ORDER = ['포장(매장)', '배달의민족', '배달의민족(가게배달)', '쿠팡이츠', '요기요', '네이버주문', '땡겨요'];
 
+        // 내일 닭 준비량 예측: marketing_stats.chicken_daily(3월부터 날짜별 사용 kg)를 요일별로 통계 내서
+        // 권장량 = max(전체 평균, 최근 4주 평균) × 1.1 (10% 여유), 0.5kg 단위 올림
+        function renderChickenForecast(m) {
+            const box = document.getElementById('chickenForecastBox');
+            const cd = m.chicken_daily;
+            if (!cd || !Object.keys(cd).length) {
+                box.innerHTML = '<div class="empty-note">아직 닭 사용량 데이터가 없습니다 (22:30 아카이브 후 생성됩니다)</div>';
+                return;
+            }
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const byDow = [[], [], [], [], [], [], []]; // 요일별 {date, kg} (날짜순)
+            Object.keys(cd).sort().forEach(d => {
+                byDow[new Date(d + 'T00:00:00').getDay()].push({ date: d, kg: cd[d] });
+            });
+            const stats = byDow.map(arr => {
+                if (!arr.length) return null;
+                const kgs = arr.map(x => x.kg);
+                const avg = kgs.reduce((a, b) => a + b, 0) / kgs.length;
+                const recent = arr.slice(-4);
+                const recentAvg = recent.reduce((a, b) => a + b.kg, 0) / recent.length;
+                const max = Math.max(...kgs);
+                const rec = Math.ceil(Math.max(avg, recentAvg) * 1.1 * 2) / 2;
+                return { n: arr.length, avg, recentAvg, max, rec, recent };
+            });
+
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tDow = tomorrow.getDay();
+            const tLabel = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}(${dayNames[tDow]})`;
+            document.getElementById('chickenForecastTitle').textContent = `🐔 내일(${tLabel}) 닭 준비량 예측`;
+
+            const ts = stats[tDow];
+            const F = v => v.toFixed(1);
+            let head;
+            if (!ts) {
+                head = `<div class="empty-note">${dayNames[tDow]}요일 판매 기록이 없습니다 (휴무일이면 정상입니다)</div>`;
+            } else {
+                head = `
+                    <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:8px;">
+                        <span style="font-size:26px; font-weight:800; color:#e8590c;">${F(ts.rec)} kg</span>
+                        <span style="font-size:13px; color:#666;">권장 준비량 (여유 10% 포함)</span>
+                    </div>
+                    <div style="font-size:12.5px; color:#777; line-height:1.7; margin-bottom:4px;">
+                        ${dayNames[tDow]}요일 평균 <b>${F(ts.avg)}kg</b> · 최근 4주 평균 <b>${F(ts.recentAvg)}kg</b> · 역대 최대 <b>${F(ts.max)}kg</b> (3월부터 ${ts.n}일 기준)<br>
+                        최근 ${dayNames[tDow]}요일: ${ts.recent.map(r => `${r.date.slice(5).replace('-', '/')} ${F(r.kg)}kg`).join(' · ')}
+                    </div>`;
+            }
+
+            const rows = [1, 2, 3, 4, 5, 6, 0].map(dw => {
+                const s = stats[dw];
+                const hl = dw === tDow ? ' style="background:#fff4e6; font-weight:700;"' : '';
+                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="4" style="color:#aaa;">기록 없음</td></tr>`;
+                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.avg)}</td><td>${F(s.recentAvg)}</td><td>${F(s.max)}</td><td style="color:#e8590c; font-weight:700;">${F(s.rec)}</td></tr>`;
+            }).join('');
+            box.innerHTML = head + `
+                <div style="overflow-x:auto; margin-top:10px;">
+                    <table class="heat-table" style="min-width:340px;">
+                        <tr><th>요일</th><th>평균(kg)</th><th>최근4주(kg)</th><th>최대(kg)</th><th>권장(kg)</th></tr>
+                        ${rows}
+                    </table>
+                </div>`;
+        }
+
         async function renderMarketing() {
             // 마케팅 어드바이저 브리핑
             loadJson('./processed/marketing_advice.json').then(a => {
@@ -2676,6 +2744,9 @@
                 document.getElementById('heatTable').innerHTML = '<tr><td class="empty-note">통계 데이터가 없습니다 (22:01 아카이브 후 생성됩니다)</td></tr>';
                 return;
             }
+
+            // ---- 0. 내일 닭 준비량 예측 ----
+            renderChickenForecast(m);
 
             // ---- 1. 요일x시간 히트맵 (11시~22시) ----
             const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
