@@ -2587,8 +2587,10 @@
         };
         const CHANNEL_ORDER = ['포장(매장)', '배달의민족', '배달의민족(가게배달)', '쿠팡이츠', '요기요', '네이버주문', '땡겨요'];
 
-        // 내일 닭 준비량 예측: marketing_stats.chicken_daily(3월부터 날짜별 사용 kg)를 요일별로 통계 내서
-        // 권장량 = max(전체 평균, 최근 4주 평균) × 1.1 (10% 여유), 0.5kg 단위 올림
+        // 내일 닭 준비량 예측: marketing_stats.chicken_daily(3월부터 날짜별 사용 kg)를 요일별로 통계.
+        // 최근 데이터에 비중을 더 주는 지수 가중 평균(반감기 4주: 4주 전 데이터는 비중 절반, 8주 전은 1/4)으로
+        // 매출 흐름이 바뀌면 예측이 빨리 따라오게 함. 권장량 = 가중 평균 × 1.1 (여유 10%), 0.5kg 올림.
+        // 납품: 도축업체가 주말 휴무라 금요일에 금·토·일 3일치를 한 번에 수령, 토·일은 납품 없음.
         function renderChickenForecast(m) {
             const box = document.getElementById('chickenForecastBox');
             const cd = m.chicken_daily;
@@ -2601,53 +2603,84 @@
             Object.keys(cd).sort().forEach(d => {
                 byDow[new Date(d + 'T00:00:00').getDay()].push({ date: d, kg: cd[d] });
             });
+            const nowMs = Date.now();
+            const HALF_LIFE_WEEKS = 4;
             const stats = byDow.map(arr => {
                 if (!arr.length) return null;
                 const kgs = arr.map(x => x.kg);
                 const avg = kgs.reduce((a, b) => a + b, 0) / kgs.length;
-                const recent = arr.slice(-4);
-                const recentAvg = recent.reduce((a, b) => a + b.kg, 0) / recent.length;
+                let wSum = 0, wKg = 0;
+                arr.forEach(x => {
+                    const weeksAgo = (nowMs - new Date(x.date + 'T00:00:00').getTime()) / (7 * 86400000);
+                    const w = Math.pow(0.5, weeksAgo / HALF_LIFE_WEEKS);
+                    wSum += w; wKg += w * x.kg;
+                });
+                const wavg = wKg / wSum;
                 const max = Math.max(...kgs);
-                const rec = Math.ceil(Math.max(avg, recentAvg) * 1.1 * 2) / 2;
-                return { n: arr.length, avg, recentAvg, max, rec, recent };
+                const rec = Math.ceil(wavg * 1.1 * 2) / 2;
+                return { n: arr.length, avg, wavg, max, rec, recent: arr.slice(-4) };
             });
+
+            const F = v => v.toFixed(1);
+            const recOf = dw => stats[dw] ? stats[dw].rec : 0;
+            const friTotal = recOf(5) + recOf(6) + recOf(0); // 금요일 납품 = 금+토+일
+            const friBreak = `금 ${F(recOf(5))} + 토 ${F(recOf(6))} + 일 ${F(recOf(0))}`;
 
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tDow = tomorrow.getDay();
             const tLabel = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}(${dayNames[tDow]})`;
-            document.getElementById('chickenForecastTitle').textContent = `🐔 내일(${tLabel}) 닭 준비량 예측`;
+            document.getElementById('chickenForecastTitle').textContent = `🐔 내일(${tLabel}) 닭 납품 예측`;
 
             const ts = stats[tDow];
-            const F = v => v.toFixed(1);
             let head;
             if (!ts) {
                 head = `<div class="empty-note">${dayNames[tDow]}요일 판매 기록이 없습니다 (휴무일이면 정상입니다)</div>`;
             } else {
+                let bigKg, bigLabel, extra = '';
+                if (tDow === 5) { // 금요일: 3일치 일괄 수령
+                    bigKg = friTotal;
+                    bigLabel = '금·토·일 3일치 납품량';
+                    extra = `<div style="font-size:12.5px; color:#e8590c; margin-bottom:4px;">📦 주말엔 도축업체 휴무 → 내일 3일치를 한 번에 받으세요 (${friBreak}kg)</div>`;
+                } else if (tDow === 6 || tDow === 0) { // 토·일: 납품 없음
+                    bigKg = ts.rec;
+                    bigLabel = `내일 예상 사용량 (납품 없음)`;
+                    extra = `<div style="font-size:12.5px; color:#e8590c; margin-bottom:4px;">📦 내일은 납품이 없는 날 — 금요일에 받아둔 3일치(${F(friTotal)}kg)에서 사용합니다</div>`;
+                } else { // 월~목: 당일 1일치
+                    bigKg = ts.rec;
+                    bigLabel = '권장 납품·준비량 (여유 10% 포함)';
+                }
                 head = `
                     <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:8px;">
-                        <span style="font-size:26px; font-weight:800; color:#e8590c;">${F(ts.rec)} kg</span>
-                        <span style="font-size:13px; color:#666;">권장 준비량 (여유 10% 포함)</span>
+                        <span style="font-size:26px; font-weight:800; color:#e8590c;">${F(bigKg)} kg</span>
+                        <span style="font-size:13px; color:#666;">${bigLabel}</span>
                     </div>
+                    ${extra}
                     <div style="font-size:12.5px; color:#777; line-height:1.7; margin-bottom:4px;">
-                        ${dayNames[tDow]}요일 평균 <b>${F(ts.avg)}kg</b> · 최근 4주 평균 <b>${F(ts.recentAvg)}kg</b> · 역대 최대 <b>${F(ts.max)}kg</b> (3월부터 ${ts.n}일 기준)<br>
+                        ${dayNames[tDow]}요일 가중 평균 <b>${F(ts.wavg)}kg</b> (최근에 비중↑) · 전체 평균 <b>${F(ts.avg)}kg</b> · 역대 최대 <b>${F(ts.max)}kg</b> — ${dayNames[tDow]}요일 ${ts.n}일치 데이터 기준<br>
                         최근 ${dayNames[tDow]}요일: ${ts.recent.map(r => `${r.date.slice(5).replace('-', '/')} ${F(r.kg)}kg`).join(' · ')}
                     </div>`;
             }
 
+            const supplyOf = dw => {
+                if (dw === 5) return `<span style="color:#e8590c; font-weight:700;">${F(friTotal)}</span> <span style="color:#999; font-size:11px;">(금토일)</span>`;
+                if (dw === 6 || dw === 0) return '<span style="color:#aaa;">—</span>';
+                return `<span style="color:#e8590c; font-weight:700;">${F(recOf(dw))}</span>`;
+            };
             const rows = [1, 2, 3, 4, 5, 6, 0].map(dw => {
                 const s = stats[dw];
                 const hl = dw === tDow ? ' style="background:#fff4e6; font-weight:700;"' : '';
-                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="4" style="color:#aaa;">기록 없음</td></tr>`;
-                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.avg)}</td><td>${F(s.recentAvg)}</td><td>${F(s.max)}</td><td style="color:#e8590c; font-weight:700;">${F(s.rec)}</td></tr>`;
+                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="4" style="color:#aaa;">기록 없음</td><td>${supplyOf(dw)}</td></tr>`;
+                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.wavg)}</td><td>${F(s.avg)}</td><td>${F(s.max)}</td><td>${F(s.rec)}</td><td>${supplyOf(dw)}</td></tr>`;
             }).join('');
             box.innerHTML = head + `
                 <div style="overflow-x:auto; margin-top:10px;">
-                    <table class="heat-table" style="min-width:340px;">
-                        <tr><th>요일</th><th>평균(kg)</th><th>최근4주(kg)</th><th>최대(kg)</th><th>권장(kg)</th></tr>
+                    <table class="heat-table" style="min-width:400px;">
+                        <tr><th>요일</th><th>가중평균(kg)</th><th>전체평균(kg)</th><th>최대(kg)</th><th>사용 예상(kg)</th><th>납품(kg)</th></tr>
                         ${rows}
                     </table>
-                </div>`;
+                </div>
+                <p class="settings-note" style="margin-top:8px;">가중평균 = 최근 데이터에 비중을 더 준 평균 (4주 전 데이터는 비중 절반). 사용 예상 = 가중평균×1.1. 납품 = 도축업체 주말 휴무 반영 — 금요일에 금·토·일 3일치 일괄 수령.</p>`;
         }
 
         async function renderMarketing() {
