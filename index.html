@@ -2591,7 +2591,7 @@
         // 최근 데이터에 비중을 더 주는 지수 가중 평균(반감기 4주: 4주 전 데이터는 비중 절반, 8주 전은 1/4)으로
         // 매출 흐름이 바뀌면 예측이 빨리 따라오게 함. 권장량 = 가중 평균 × 1.1 (여유 10%), 0.5kg 올림.
         // 납품: 도축업체가 주말 휴무라 금요일에 금·토·일 3일치를 한 번에 수령, 토·일은 납품 없음.
-        function renderChickenForecast(m) {
+        async function renderChickenForecast(m) {
             const box = document.getElementById('chickenForecastBox');
             const cd = m.chicken_daily;
             if (!cd || !Object.keys(cd).length) {
@@ -2646,6 +2646,16 @@
             };
             const isoOf = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 
+            // 단체 예약 (config\group_orders.json → 미러) : 날짜별 추가 필요 kg
+            const go = await loadJson('./processed/group_orders.json');
+            const groupByDate = {};
+            ((go && go.orders) || []).forEach(o => {
+                const kg = (o.qty * (o.chicken_g_each || 0)) / 1000;
+                if (!groupByDate[o.date]) groupByDate[o.date] = { kg: 0, names: [] };
+                groupByDate[o.date].kg += kg;
+                groupByDate[o.date].names.push(`${o.name} ${o.qty}개`);
+            });
+
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tDow = tomorrow.getDay();
@@ -2671,18 +2681,34 @@
                     eventBanner += `<div style="font-size:13px; font-weight:700; color:#e8590c; background:#fff4e6; border-radius:6px; padding:8px 10px; margin-bottom:6px;">🎌 모레가 <b>${evNext.label}</b>(공휴일) — 내일 저녁은 금요일처럼 수요가 늘 수 있고, 공휴일 당일 납품 가능 여부도 업체에 미리 확인하세요</div>`;
                 }
 
+                // 단체 예약 합산: 월~목은 내일 것만, 금요일 납품은 금·토·일 3일치 예약까지
+                const groupKgOf = dt => { const g = groupByDate[isoOf(dt)]; return g ? g.kg : 0; };
+                const groupNamesOf = dt => { const g = groupByDate[isoOf(dt)]; return g ? g.names.join(', ') : ''; };
+                let groupKg = groupKgOf(tomorrow);
+                let groupDesc = groupNamesOf(tomorrow);
+                if (tDow === 5) {
+                    const sat = new Date(tomorrow); sat.setDate(sat.getDate() + 1);
+                    const sun = new Date(tomorrow); sun.setDate(sun.getDate() + 2);
+                    groupKg += groupKgOf(sat) + groupKgOf(sun);
+                    const wk = [groupNamesOf(sat), groupNamesOf(sun)].filter(Boolean).join(', ');
+                    if (wk) groupDesc = [groupDesc, `주말분: ${wk}`].filter(Boolean).join(' / ');
+                }
+                if (groupKg > 0) {
+                    eventBanner += `<div style="font-size:13px; font-weight:700; color:#1971c2; background:#e7f5ff; border-radius:6px; padding:8px 10px; margin-bottom:6px;">📋 단체 예약 <b>+${F(groupKg)}kg</b> — ${groupDesc}</div>`;
+                }
+
                 let bigKg, bigLabel, extra = '';
                 if (tDow === 5) { // 금요일: 3일치 일괄 수령
-                    bigKg = friTotal;
-                    bigLabel = '금·토·일 3일치 필요량';
+                    bigKg = friTotal + groupKg;
+                    bigLabel = '금·토·일 3일치 필요량' + (groupKg ? ` (평소 ${F(friTotal)} + 단체 ${F(groupKg)})` : '');
                     extra = `<div style="font-size:12.5px; color:#e8590c; margin-bottom:4px;">📦 주말엔 도축업체 휴무 → 내일 3일치를 한 번에 받으세요 (${friBreak}kg)</div>`;
                 } else if (tDow === 6 || tDow === 0) { // 토·일: 납품 없음
-                    bigKg = ts.rec;
-                    bigLabel = `내일 예상 사용량 (납품 없음)`;
+                    bigKg = ts.rec + groupKg;
+                    bigLabel = `내일 예상 사용량 (납품 없음)` + (groupKg ? ` — 단체 ${F(groupKg)}kg 포함` : '');
                     extra = `<div style="font-size:12.5px; color:#e8590c; margin-bottom:4px;">📦 내일은 납품이 없는 날 — 금요일에 받아둔 3일치에서 사용합니다</div>`;
                 } else { // 월~목: 당일 1일치
-                    bigKg = ts.rec;
-                    bigLabel = '내일 필요량 (여유 10% 포함)';
+                    bigKg = ts.rec + groupKg;
+                    bigLabel = groupKg ? `내일 필요량 (평소 ${F(ts.rec)} + 단체 ${F(groupKg)})` : '내일 필요량 (여유 10% 포함)';
                 }
                 head = eventBanner + `
                     <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:8px;">
@@ -2701,19 +2727,44 @@
                 if (dw === 6 || dw === 0) return '<span style="color:#aaa;">—</span>';
                 return `<span style="color:#e8590c; font-weight:700;">${F(recOf(dw))}</span>`;
             };
+
+            // 비고: 각 요일의 "다가오는 날짜"(내일부터 7일)에 걸린 이벤트·단체 예약·공휴일 전날
+            const dowNote = {};
+            for (let i = 1; i <= 7; i++) {
+                const d = new Date(); d.setDate(d.getDate() + i);
+                const iso = isoOf(d);
+                const dLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+                const parts = [];
+                const e = EVENT_DAYS[iso];
+                if (e) parts.push(`${e.boost ? '🔥' : '🎌'}${e.label}`);
+                const nx = new Date(d); nx.setDate(nx.getDate() + 1);
+                const eNext = EVENT_DAYS[isoOf(nx)];
+                if (eNext && eNext.holiday && !(e && e.holiday)) parts.push(`${eNext.label} 전날`);
+                const g = groupByDate[iso];
+                if (g) parts.push(`📋단체 +${g.kg.toFixed(1)}kg`);
+                if (parts.length) dowNote[d.getDay()] = `${dLabel}: ${parts.join(' · ')}`;
+            }
+
             const rows = [1, 2, 3, 4, 5, 6, 0].map(dw => {
                 const s = stats[dw];
                 const hl = dw === tDow ? ' style="background:#fff4e6; font-weight:700;"' : '';
-                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="3" style="color:#aaa;">기록 없음</td><td>${supplyOf(dw)}</td></tr>`;
-                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.wavg)}</td><td>${F(s.max)}</td><td>${F(s.rec)}</td><td>${supplyOf(dw)}</td></tr>`;
+                const note = dowNote[dw]
+                    ? `<td style="color:#e03131; font-size:12px; text-align:left; white-space:nowrap;">${dowNote[dw]}</td>`
+                    : '<td style="color:#ccc;">-</td>';
+                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="3" style="color:#aaa;">기록 없음</td><td>${supplyOf(dw)}</td>${note}</tr>`;
+                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.wavg)}</td><td>${F(s.max)}</td><td>${F(s.rec)}</td><td>${supplyOf(dw)}</td>${note}</tr>`;
             }).join('');
 
-            // 다가오는 30일 내 수요 급증일 미리보기
+            // 다가오는 30일 내 수요 급증일·단체 예약 미리보기
             const upcoming = [];
             for (let i = 1; i <= 30; i++) {
                 const d = new Date(); d.setDate(d.getDate() + i);
-                const e = EVENT_DAYS[isoOf(d)];
-                if (e) upcoming.push(`${e.label} ${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})${e.boost ? '🔥' : ''}`);
+                const iso = isoOf(d);
+                const dLabel = `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
+                const e = EVENT_DAYS[iso];
+                if (e) upcoming.push(`${e.label} ${dLabel}${e.boost ? '🔥' : ''}`);
+                const g = groupByDate[iso];
+                if (g) upcoming.push(`📋단체 +${g.kg.toFixed(1)}kg ${dLabel}`);
             }
             const upcomingLine = upcoming.length
                 ? `<div style="font-size:12.5px; color:#777; margin-top:8px;">📅 다가오는 이벤트: ${upcoming.join(' · ')}</div>` : '';
@@ -2721,7 +2772,7 @@
             box.innerHTML = head + `
                 <div style="overflow-x:auto; margin-top:10px;">
                     <table class="heat-table" style="min-width:380px;">
-                        <tr><th>요일</th><th>가중평균(kg)</th><th>최대(kg)</th><th>사용 예상(kg)</th><th>납품 필요(kg)</th></tr>
+                        <tr><th>요일</th><th>가중평균(kg)</th><th>최대(kg)</th><th>사용 예상(kg)</th><th>납품 필요(kg)</th><th>비고</th></tr>
                         ${rows}
                     </table>
                 </div>
