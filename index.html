@@ -2093,6 +2093,7 @@
 
         // 주문 1건의 재료비 추정
         function orderCost(order) {
+            if (typeof order.cost === 'number') return order.cost; // 선결제 가상주문 등 원가가 직접 지정된 경우
             if (!menuCosts) return 0;
             const mc = menuCosts;
             const menus = order.menus || order.items || [];
