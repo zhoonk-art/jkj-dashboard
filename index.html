@@ -1061,7 +1061,7 @@
         let currentDate = null;             // 'date' 모드일 때 대상 날짜
         let renderSeq = 0;                  // 렌더 경쟁 방지 토큰 (탭 빠른 전환 시)
         const chartInstances = {};          // canvas id -> Chart (재생성 시 destroy)
-        const IS_LOCAL = ['localhost', '127.0.0.1'].indexOf(location.hostname) !== -1; // 매장 PC 여부
+        const IS_LOCAL = !/\.github\.io$/i.test(location.hostname); // 매장 서버 접속 여부 (저장 버튼은 매장 서버 API 필요 — 원격 GitHub Pages에서만 숨김)
 
         // ===== 유틸 =====
         function fmtDate(d) {
@@ -1905,6 +1905,15 @@
             await loadFees();
             await loadMenuCosts();
             const data = await loadJson('./processed/orders_latest.json');
+
+            // ----- 메뉴 마진표 + 운영비·재료비 설정 (오늘 주문 로드에 실패해도 항상 표시) -----
+            renderMenuMarginTable();
+            await loadCosts();
+            renderCostSettings();
+            renderMenuCostSettings();
+            const mc = costsTotal();
+            document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
+
             if (!data) return;
 
             const orders = (data.orders || []).filter(o => !o.cancelled && !o.prepaid);
@@ -1997,14 +2006,6 @@
                         </div>`;
                 }).join('') +
                 `<p class="settings-note" style="margin-top:8px;">부가세는 네 항목 합계의 10%로 자동 계산됩니다. 광고%는 매출연동 광고(쿠팡 등)에만 사용하세요.</p>`;
-
-            // ----- 메뉴 마진표 + 운영비 + 이번 달 손익 -----
-            renderMenuMarginTable();
-            await loadCosts();
-            renderCostSettings();
-            renderMenuCostSettings();
-            const mc = costsTotal();
-            document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
 
             // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(오늘 실제 근무하는 직원만) 차감
             const laborDaily = laborForDate(todayStr());
