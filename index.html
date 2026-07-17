@@ -1008,8 +1008,8 @@
                 <div id="chickenForecastBox"><div class="empty-note">데이터 준비 중... (22:30 아카이브 후 생성됩니다)</div></div>
             </div>
             <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>🔥 요일 × 시간대 주문 건수 히트맵</h2>
-                <p class="settings-note">최근 3개월 누적. 진할수록 주문이 많은 시간대입니다. 칸에 마우스를 올리면 상세가 보입니다.</p>
+                <h2>🔥 요일 × 시간대 평균 주문 건수</h2>
+                <p class="settings-note">영업일 기준 시간당 평균 주문 건수 — 닭 예측처럼 최근 데이터에 비중을 더 둔 가중 평균(반감기 4주)입니다. 진할수록 바쁜 시간대.</p>
                 <div style="overflow-x: auto;">
                     <table class="heat-table" id="heatTable"></table>
                 </div>
@@ -2596,6 +2596,66 @@
         // 최근 데이터에 비중을 더 주는 지수 가중 평균(반감기 4주: 4주 전 데이터는 비중 절반, 8주 전은 1/4)으로
         // 매출 흐름이 바뀌면 예측이 빨리 따라오게 함. 권장량 = 가중 평균 × 1.1 (여유 10%), 0.5kg 올림.
         // 납품: 도축업체가 주말 휴무라 금요일에 금·토·일 3일치를 한 번에 수령, 토·일은 납품 없음.
+        // ===== 닭 재고 원장 (입고/실사 기록, 매장 PC 전용 저장) =====
+        async function saveChickenCfg(cfg) {
+            const resp = await fetch('./api/save-chicken', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        }
+
+        async function addChickenEntry(kind) {
+            const date = document.getElementById('chkDate').value;
+            const kg = parseFloat(document.getElementById('chkKg').value);
+            const msg = document.getElementById('chkMsg');
+            if (!date || isNaN(kg) || kg < 0) { msg.textContent = '날짜와 kg를 입력하세요'; msg.style.color = '#e03131'; return; }
+            try {
+                const cfg = (await loadJson('./processed/chicken_ledger.json')) || {};
+                if (!cfg.entries) cfg.entries = [];
+                const e = { date: date };
+                e[kind] = kg;
+                cfg.entries.push(e);
+                await saveChickenCfg(cfg);
+                renderMarketing();
+            } catch (err) {
+                msg.textContent = '저장 실패: ' + err.message; msg.style.color = '#e03131';
+            }
+        }
+
+        async function delChickenEntry(idx) {
+            try {
+                const cfg = (await loadJson('./processed/chicken_ledger.json')) || {};
+                if (!cfg.entries || idx < 0 || idx >= cfg.entries.length) return;
+                cfg.entries.splice(idx, 1);
+                await saveChickenCfg(cfg);
+                renderMarketing();
+            } catch (err) { alert('삭제 실패: ' + err.message); }
+        }
+
+        // 오늘 닭 사용량 실시간 추정 (아카이브 전) — archive_and_summarize.ps1의 파싱 규칙과 동일
+        function estimateChickenKg(orders) {
+            const G = { '반마리': 350, '한마리': 750, '두마리': 1500 };
+            let g = 0;
+            (orders || []).forEach(o => {
+                if (o.cancelled) return;
+                let optSize = null;
+                for (const it of (o.items || [])) {
+                    if (it.is_option) { const m2 = (it.name || '').match(/(반마리|한마리|두마리)/); if (m2) { optSize = m2[1]; break; } }
+                }
+                (o.items || []).forEach(it => {
+                    if (it.is_option) return;
+                    const nm = it.name || '';
+                    if (/다음에|주세요|빼주|리뷰|껍질/.test(nm)) return;
+                    if (/새우/.test(nm) && !/닭/.test(nm)) return;
+                    if (!/닭|후라이드|양념/.test(nm)) return;
+                    const m = nm.match(/(반마리|한마리|두마리)/);
+                    const sz = m ? m[1] : (optSize || '반마리');
+                    g += G[sz] * (it.qty || 1);
+                });
+            });
+            return g / 1000;
+        }
+
         async function renderChickenForecast(m) {
             const box = document.getElementById('chickenForecastBox');
             const cd = m.chicken_daily;
@@ -2662,11 +2722,73 @@
                 groupByDate[o.date].names.push(`${o.name} ${o.qty}개`);
             });
 
+            // ===== 재고 원장: 입고 기록 + 사용량으로 장부 재고 계산 =====
+            const ledger = await loadJson('./processed/chicken_ledger.json');
+            const latest = await loadJson('./processed/orders_latest.json');
+            const tIso0 = todayStr();
+            const groupKgOf0 = iso => groupByDate[iso] ? groupByDate[iso].kg : 0;
+            // 오늘 사용량: 아카이브 전이면 실시간 주문에서 추정
+            const todayUsedBase = (cd[tIso0] != null) ? cd[tIso0]
+                : ((latest && latest.date === tIso0 && latest.orders) ? estimateChickenKg(latest.orders) : 0);
+
+            let invInfo = null;
+            if (ledger && ledger.entries && ledger.entries.length) {
+                const byDate = {};
+                ledger.entries.forEach(e => {
+                    if (!byDate[e.date]) byDate[e.date] = { recv: 0, check: null };
+                    if (typeof e.received_kg === 'number') byDate[e.date].recv += e.received_kg;
+                    if (typeof e.stock_check_kg === 'number') byDate[e.date].check = e.stock_check_kg;
+                });
+                const first = Object.keys(byDate).sort()[0];
+                let inv = 0;
+                const losses = [];
+                for (let d = new Date(first + 'T00:00:00'); ; d.setDate(d.getDate() + 1)) {
+                    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    if (iso > tIso0) break;
+                    const bd = byDate[iso];
+                    inv += bd ? bd.recv : 0;
+                    const used = ((iso === tIso0) ? todayUsedBase : (cd[iso] != null ? cd[iso] : 0)) + groupKgOf0(iso);
+                    inv -= used;
+                    if (bd && bd.check != null) {
+                        const diff = inv - bd.check; // +면 장부보다 실물이 적음 = 로스
+                        if (Math.abs(diff) >= 0.3) losses.push({ date: iso, diff });
+                        inv = bd.check;
+                    }
+                }
+                invInfo = { inv: inv, losses: losses };
+            }
+
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tDow = tomorrow.getDay();
             const tLabel = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}(${dayNames[tDow]})`;
             document.getElementById('chickenForecastTitle').textContent = `🐔 내일(${tLabel}) 닭 납품 예측`;
+
+            // ===== 오늘 밤 주문 추천 (주문 밤: 월화수 → 다음날 1일치, 목 → 금토일 3일치 / 금토일 밤은 주문 없음) =====
+            const nowDow = new Date().getDay();
+            const orderCover = (nowDow >= 1 && nowDow <= 3) ? [1] : (nowDow === 4 ? [1, 2, 3] : null);
+            let orderBanner;
+            if (orderCover) {
+                let needKg = 0; const needParts = []; let evNote = '';
+                orderCover.forEach(off => {
+                    const d = new Date(); d.setDate(d.getDate() + off);
+                    const iso = isoOf(d);
+                    const dayNeed = (stats[d.getDay()] ? stats[d.getDay()].rec : 0) + groupKgOf0(iso);
+                    needKg += dayNeed;
+                    needParts.push(`${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]}) ${F(dayNeed)}`);
+                    const e0 = EVENT_DAYS[iso];
+                    if (e0 && (e0.boost || e0.holiday)) evNote += ` ⚠️${e0.label} — 여유 있게!`;
+                });
+                const inv0 = invInfo ? invInfo.inv : 0;
+                const orderKg = Math.max(0, Math.ceil((needKg - inv0) / 10) * 10);
+                orderBanner = `<div style="font-size:15px; font-weight:800; color:#fff; background:linear-gradient(135deg,#e8590c,#c9480a); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+                    🛒 오늘 밤 주문 추천: ${orderKg > 0 ? orderKg + 'kg' : '주문 불필요 (재고로 충분)'}
+                    <div style="font-weight:500; font-size:12.5px; opacity:0.95; margin-top:3px;">필요 ${F(needKg)}kg (${needParts.join(' + ')}) − 장부 재고 ${F(inv0)}kg → 10kg 단위 올림${evNote}</div>
+                    ${invInfo ? '' : '<div style="font-size:12px; font-weight:500; margin-top:3px; opacity:0.85;">※ 입고 기록이 아직 없어 재고 0으로 가정 — 아래 장부에 입고량을 입력하면 재고가 반영됩니다</div>'}
+                </div>`;
+            } else {
+                orderBanner = `<div style="font-size:13px; color:#666; background:#f5f2f0; border-radius:8px; padding:8px 12px; margin-bottom:8px;">🛒 오늘 밤은 닭 주문이 없는 날입니다 — 다음 주문: 월요일 밤 (화요일 아침 납품)</div>`;
+            }
 
             const ts = stats[tDow];
             let head;
@@ -2731,7 +2853,19 @@
             const supplyOf = dw => {
                 if (dw === 5) return `<span style="color:#e8590c; font-weight:700;">${F(friTotal)}</span> <span style="color:#999; font-size:11px;">(금토일)</span>`;
                 if (dw === 6 || dw === 0) return '<span style="color:#aaa;">—</span>';
+                if (dw === 1) return '<span style="color:#aaa;">— <span style="font-size:10px;">(휴무)</span></span>';
                 return `<span style="color:#e8590c; font-weight:700;">${F(recOf(dw))}</span>`;
+            };
+
+            // 그날 밤에 넣을 주문량 (10kg 단위, 재고 미반영 참고치): 월화수 → 다음날 1일치, 목 → 금토일 3일치
+            const nightOf = dw => {
+                if (dw >= 1 && dw <= 3) { const nd = recOf(dw + 1); return nd > 0 ? Math.ceil(nd / 10) * 10 : null; }
+                if (dw === 4) return Math.ceil(friTotal / 10) * 10;
+                return null;
+            };
+            const nightCell = dw => {
+                const v = nightOf(dw);
+                return v == null ? '<span style="color:#aaa;">—</span>' : `<span style="color:#1971c2; font-weight:700;">${v}</span>`;
             };
 
             // 비고: 각 요일의 "다가오는 날짜"(내일부터 7일)에 걸린 이벤트·단체 예약·공휴일 전날
@@ -2757,8 +2891,8 @@
                 const note = dowNote[dw]
                     ? `<td style="color:#e03131; font-size:12px; text-align:left; white-space:nowrap;">${dowNote[dw]}</td>`
                     : '<td style="color:#ccc;">-</td>';
-                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="3" style="color:#aaa;">기록 없음</td><td>${supplyOf(dw)}</td>${note}</tr>`;
-                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.wavg)}</td><td>${F(s.max)}</td><td>${F(s.rec)}</td><td>${supplyOf(dw)}</td>${note}</tr>`;
+                if (!s) return `<tr${hl}><td>${dayNames[dw]}</td><td colspan="3" style="color:#aaa;">기록 없음</td><td>${supplyOf(dw)}</td><td>${nightCell(dw)}</td>${note}</tr>`;
+                return `<tr${hl}><td>${dayNames[dw]}</td><td>${F(s.wavg)}</td><td>${F(s.max)}</td><td>${F(s.rec)}</td><td>${supplyOf(dw)}</td><td>${nightCell(dw)}</td>${note}</tr>`;
             }).join('');
 
             // 다가오는 30일 내 수요 급증일·단체 예약 미리보기
@@ -2775,15 +2909,51 @@
             const upcomingLine = upcoming.length
                 ? `<div style="font-size:12.5px; color:#777; margin-top:8px;">📅 다가오는 이벤트: ${upcoming.join(' · ')}</div>` : '';
 
-            box.innerHTML = head + `
+            // ===== 재고 장부 UI =====
+            let ledgerHtml = `<div class="comp-section-title" style="margin-top:14px;">📦 닭 재고 장부</div>`;
+            if (invInfo) {
+                const invColor = invInfo.inv < 0 ? '#e03131' : '#2b8a3e';
+                ledgerHtml += `<div style="font-size:13px; margin-bottom:4px;">현재 장부 재고: <b style="color:${invColor}; font-size:17px;">${F(invInfo.inv)}kg</b> <span style="color:#888; font-size:12px;">= 입고 누계 − 판매 사용량${cd[tIso0] == null ? ' (오늘 사용분 ' + F(todayUsedBase + groupKgOf0(tIso0)) + 'kg는 실시간 추정)' : ''}</span></div>`;
+                if (invInfo.inv < 0) {
+                    ledgerHtml += `<div style="font-size:12.5px; color:#e03131; margin-bottom:4px;">⚠️ 장부 재고가 마이너스입니다 — 입고 기록이 빠졌거나 사용량이 과대 계산됐어요. 마감 때 실사 재고를 입력하면 보정됩니다.</div>`;
+                }
+                if (invInfo.losses.length) {
+                    ledgerHtml += `<div style="font-size:12.5px; color:#e8590c; margin-bottom:4px;">🔎 실사 보정 이력: ` +
+                        invInfo.losses.slice(-5).map(l => `${l.date.slice(5).replace('-', '/')} ${l.diff > 0 ? '로스 -' + F(l.diff) + 'kg' : '초과 +' + F(-l.diff) + 'kg'}`).join(' · ') +
+                        ` <span style="color:#999;">(로스 = 장부보다 실물이 적음: 폐기·서비스·기록 누락 등)</span></div>`;
+                }
+            } else {
+                ledgerHtml += `<div style="font-size:12.5px; color:#888; margin-bottom:4px;">아직 입고 기록이 없습니다. 닭이 들어온 날 아침 입고량(kg)을 저장하면 장부 재고가 자동 계산되고 주문 추천에 반영됩니다. 가끔 마감 때 실제 남은 닭 무게(실사)를 입력하면 장부와의 차이 = 로스가 보입니다.</div>`;
+            }
+            if (ledger && ledger.entries && ledger.entries.length) {
+                const ents = ledger.entries.map((e, i) => ({ e: e, i: i })).slice(-8).reverse();
+                ledgerHtml += `<div style="margin-bottom:4px;">` + ents.map(x => `
+                    <div style="font-size:12.5px; color:#555; display:flex; gap:10px; align-items:center; padding:2px 0;">
+                        <span style="color:#999;">${x.e.date}</span>
+                        <span>${typeof x.e.received_kg === 'number' ? '📥 입고 ' + x.e.received_kg + 'kg' : '📏 실사 ' + x.e.stock_check_kg + 'kg'}</span>
+                        ${IS_LOCAL ? `<button onclick="delChickenEntry(${x.i})" style="border:none; background:none; color:#c92a2a; cursor:pointer; font-size:11px; padding:0;">삭제</button>` : ''}
+                    </div>`).join('') + `</div>`;
+            }
+            if (IS_LOCAL) {
+                ledgerHtml += `<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px;">
+                    <input type="date" id="chkDate" value="${tIso0}" style="padding:5px 6px; border:1px solid #ddd; border-radius:6px; font-size:12.5px;">
+                    <input type="number" id="chkKg" step="0.5" min="0" placeholder="kg" style="width:75px; padding:5px 6px; border:1px solid #ddd; border-radius:6px; font-size:12.5px;">
+                    <button class="save-btn" style="padding:6px 12px; font-size:12px;" onclick="addChickenEntry('received_kg')">+ 입고 저장</button>
+                    <button class="save-btn" style="padding:6px 12px; font-size:12px; background:#1971c2;" onclick="addChickenEntry('stock_check_kg')">실사 재고 저장</button>
+                    <span id="chkMsg" style="font-size:12px;"></span>
+                </div>`;
+            }
+
+            box.innerHTML = orderBanner + head + `
                 <div style="overflow-x:auto; margin-top:10px;">
-                    <table class="heat-table" style="min-width:380px;">
-                        <tr><th>요일</th><th>가중평균(kg)</th><th>최대(kg)</th><th>사용 예상(kg)</th><th>납품 필요(kg)</th><th>비고</th></tr>
+                    <table class="heat-table" style="min-width:420px;">
+                        <tr><th>요일</th><th>가중평균(kg)</th><th>최대(kg)</th><th>사용 예상(kg)</th><th>납품 필요(kg)</th><th>밤 주문(10kg)</th><th>비고</th></tr>
                         ${rows}
                     </table>
                 </div>
+                ${ledgerHtml}
                 ${upcomingLine}
-                <p class="settings-note" style="margin-top:8px;">가중평균 = 최근 데이터에 비중을 더 준 평균 (4주 전 데이터는 비중 절반). 사용 예상 = 가중평균×1.1. 납품 필요 = 도축업체 주말 휴무 반영 — 금요일에 금·토·일 3일치. 전날 남은 닭을 빼고 최종 주문량(10kg 단위)은 직접 판단하세요. 복날·공휴일·공휴일 전날은 자동으로 알려드립니다.</p>`;
+                <p class="settings-note" style="margin-top:8px;">가중평균 = 최근 데이터에 비중을 더 준 평균 (4주 전 데이터는 비중 절반). 사용 예상 = 가중평균×1.1. 납품 필요 = 그날 아침 받는 양 (금요일 = 금·토·일 3일치, 월요일 휴무 기준). 밤 주문 = 그날 마감 때 넣을 주문의 10kg 단위 참고치(재고 미반영) — 실제 추천은 맨 위 배너가 장부 재고를 빼고 계산합니다. 복날·공휴일·단체 예약은 자동 반영됩니다.</p>`;
         }
 
         async function renderMarketing() {
@@ -2890,24 +3060,24 @@
             const hours = [];
             for (let h = 11; h <= 22; h++) hours.push(h);
 
-            const heatCnt3m = m.heat_count_3m || m.heat_count; // 구버전 데이터 폴백
-            const dowOccur3m = m.dow_occurrences_3m || [13, 13, 13, 13, 13, 13, 13]; // 구버전 폴백(약 13주)
-            let maxCnt = 0;
-            dowOrder.forEach(d => hours.forEach(h => { maxCnt = Math.max(maxCnt, heatCnt3m[d][h]); }));
+            // 가중 평균(최근 비중↑, 반감기 4주) 우선, 없으면 구버전(3개월 누적/일수) 폴백
+            const heatCnt3m = m.heat_count_3m || m.heat_count;
+            const dowOccur3m = m.dow_occurrences_3m || [13, 13, 13, 13, 13, 13, 13];
+            const avgOf = (d, h) => m.heat_wavg ? m.heat_wavg[d][h] : (heatCnt3m[d][h] / (dowOccur3m[d] || 1));
+            let maxAvg = 0;
+            dowOrder.forEach(d => hours.forEach(h => { maxAvg = Math.max(maxAvg, avgOf(d, h)); }));
 
             let ht = '<tr><th></th>' + dowOrder.map(d => `<th>${dayNames[d]}</th>`).join('') + '</tr>';
             hours.forEach(h => {
                 ht += `<tr><th>${h}시</th>`;
                 dowOrder.forEach(d => {
-                    const cnt = heatCnt3m[d][h];
-                    const occur = dowOccur3m[d] || 1;
-                    const avg = cnt > 0 ? (cnt / occur).toFixed(1) : '';
-                    const ratio = maxCnt > 0 ? cnt / maxCnt : 0;
-                    const alpha = cnt > 0 ? 0.08 + ratio * 0.92 : 0;
+                    const avg = avgOf(d, h);
+                    const ratio = maxAvg > 0 ? avg / maxAvg : 0;
+                    const alpha = avg > 0.005 ? 0.08 + ratio * 0.92 : 0;
                     const txtColor = ratio > 0.55 ? 'white' : '#5a4436';
-                    const label = cnt > 0 ? `${cnt} <span style="font-size:0.75em; opacity:0.8;">(${avg})</span>` : '';
+                    const label = avg > 0.005 ? avg.toFixed(1) : '';
                     ht += `<td class="heat-cell" style="background: rgba(80,17,0,${alpha.toFixed(3)}); color: ${txtColor};"
-                        title="${dayNames[d]}요일 ${h}시 · 최근 3개월 총 ${cnt}건 · ${dayNames[d]}요일 ${occur}회 중 평균 ${avg}건">${label}</td>`;
+                        title="${dayNames[d]}요일 ${h}시 · 평균 ${avg.toFixed(2)}건/일 (최근 데이터 가중)">${label}</td>`;
                 });
                 ht += '</tr>';
             });
