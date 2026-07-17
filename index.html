@@ -2018,14 +2018,17 @@
 
             const m = await calcMonthNet();
             document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
-            document.getElementById('monthNetSub').textContent = `영업 ${m.days}일 · 매출 ${m.gross.toLocaleString()}원`;
+            document.getElementById('monthNetSub').textContent =
+                `영업 ${m.days}일 · 매출 ${m.gross.toLocaleString()}원 · 재료비 -${m.mat.toLocaleString()}원`;
 
-            const profit = m.net - mc;
+            // 진짜 손익 = 실수령(수수료 차감) − 재료비 − 월 운영비(월세·관리비·가스·광고·인건비). 세금 전 기준.
+            const profit = m.net - m.mat - mc;
             document.getElementById('monthProfit').textContent =
                 (profit >= 0 ? '+' : '') + profit.toLocaleString() + '원';
-            const dailyNeed = Math.round(mc / 26);
+            const marginRate = m.gross > 0 ? (m.net - m.mat) / m.gross : 0.45;
+            const dailyNeed = marginRate > 0 ? Math.round(mc / 26 / marginRate) : 0;
             document.getElementById('breakEvenInfo').textContent =
-                `손익분기: 하루 실수령 약 ${dailyNeed.toLocaleString()}원 필요 (월 26일 기준)`;
+                `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (월 26일)`;
         }
 
         // ===== 재료비 (메뉴별 원가) =====
@@ -2375,33 +2378,29 @@
 
         // 이번 달 실수령 누계 (아카이브 각 날짜의 채널별 합계에 수수료 적용 + 오늘)
         async function calcMonthNet() {
+            // 주문 단위로 수수료(orderNet: 광고% 포함)와 재료비(orderCost)까지 집계 — 월 손익을 진짜 손익에 가깝게
             const ym = todayStr().substring(0, 7);
             const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
-            let gross = 0, net = 0, days = 0;
+            let gross = 0, net = 0, mat = 0, days = 0;
+            const monthDays = idx.filter(x => x.date.substring(0, 7) === ym);
 
-            for (const d of idx.filter(x => x.date.substring(0, 7) === ym)) {
-                const s = await loadJson(`./processed/archive/${d.date}/summary.json`);
-                if (!s || !s.channels) continue;
+            for (const d of monthDays) {
+                const ymd = d.date.replace(/-/g, '');
+                const od = await loadJson(`./processed/archive/${d.date}/orders_${ymd}.json`);
+                if (!od || !od.orders) continue;
+                const act = od.orders.filter(o => !o.cancelled && !o.prepaid);
+                if (!act.length) continue;
                 days++;
-                Object.keys(s.channels).forEach(ch => {
-                    const c = s.channels[ch];
-                    const f = feeFor(ch);
-                    const med = Math.round(c.amount * f.med / 100);
-                    const pay = Math.round(c.amount * f.pay / 100);
-                    const del = f.del * c.count;
-                    const vat = Math.round((med + pay + del) * 0.1);
-                    gross += c.amount;
-                    net += c.amount - med - pay - del - vat;
-                });
+                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o); });
             }
 
             const t = await loadJson('./processed/orders_latest.json');
-            if (t && t.date && t.date.substring(0, 7) === ym && t.orders) {
+            if (t && t.date && t.date.substring(0, 7) === ym && t.orders && !monthDays.some(x => x.date === t.date)) {
                 const act = t.orders.filter(o => !o.cancelled && !o.prepaid);
                 if (act.length > 0) days++;
-                act.forEach(o => { gross += o.amount; net += orderNet(o).net; });
+                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o); });
             }
-            return { gross: gross, net: net, days: days };
+            return { gross: gross, net: net, mat: mat, days: days };
         }
 
         function renderCostSettings() {
