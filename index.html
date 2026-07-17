@@ -2025,10 +2025,16 @@
             const profit = m.net - m.mat - mc;
             document.getElementById('monthProfit').textContent =
                 (profit >= 0 ? '+' : '') + profit.toLocaleString() + '원';
+            // 이 달의 실제 영업일 수 = 총 일수 − 월요일(휴무) 수
+            const bizNow = new Date();
+            const bizY = bizNow.getFullYear(), bizM = bizNow.getMonth();
+            const bizTotal = new Date(bizY, bizM + 1, 0).getDate();
+            let bizDays = 0;
+            for (let bi = 1; bi <= bizTotal; bi++) { if (new Date(bizY, bizM, bi).getDay() !== 1) bizDays++; }
             const marginRate = m.gross > 0 ? (m.net - m.mat) / m.gross : 0.45;
-            const dailyNeed = marginRate > 0 ? Math.round(mc / 26 / marginRate) : 0;
+            const dailyNeed = marginRate > 0 ? Math.round(mc / bizDays / marginRate) : 0;
             document.getElementById('breakEvenInfo').textContent =
-                `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (월 26일)`;
+                `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (${bizM + 1}월 영업일 ${bizDays}일 = ${bizTotal}일 − 월요일 ${bizTotal - bizDays}일)`;
         }
 
         // ===== 재료비 (메뉴별 원가) =====
