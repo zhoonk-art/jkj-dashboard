@@ -2755,8 +2755,9 @@
             if (ledger && ledger.entries && ledger.entries.length) {
                 const byDate = {};
                 ledger.entries.forEach(e => {
-                    if (!byDate[e.date]) byDate[e.date] = { recv: 0, check: null };
+                    if (!byDate[e.date]) byDate[e.date] = { recv: 0, extra: 0, check: null };
                     if (typeof e.received_kg === 'number') byDate[e.date].recv += e.received_kg;
+                    if (typeof e.used_kg === 'number') byDate[e.date].extra += e.used_kg; // 서비스·시식·폐기 등 매출 없는 소진
                     if (typeof e.stock_check_kg === 'number') byDate[e.date].check = e.stock_check_kg;
                 });
                 const first = Object.keys(byDate).sort()[0];
@@ -2767,7 +2768,7 @@
                     if (iso > tIso0) break;
                     const bd = byDate[iso];
                     inv += bd ? bd.recv : 0;
-                    const used = ((iso === tIso0) ? todayUsedBase : (cd[iso] != null ? cd[iso] : 0)) + groupKgOf0(iso);
+                    const used = ((iso === tIso0) ? todayUsedBase : (cd[iso] != null ? cd[iso] : 0)) + groupKgOf0(iso) + (bd ? bd.extra : 0);
                     inv -= used;
                     if (bd && bd.check != null) {
                         const diff = inv - bd.check; // +면 장부보다 실물이 적음 = 로스
@@ -2956,7 +2957,9 @@
                 ledgerHtml += `<div style="margin-bottom:4px;">` + ents.map(x => `
                     <div style="font-size:12.5px; color:#555; display:flex; gap:10px; align-items:center; padding:2px 0;">
                         <span style="color:#999;">${x.e.date}</span>
-                        <span>${typeof x.e.received_kg === 'number' ? '📥 입고 ' + x.e.received_kg + 'kg' : '📏 실사 ' + x.e.stock_check_kg + 'kg'}</span>
+                        <span>${typeof x.e.received_kg === 'number' ? '📥 입고 ' + x.e.received_kg + 'kg'
+                            : typeof x.e.used_kg === 'number' ? '🍗 소진 ' + x.e.used_kg + 'kg' + (x.e.memo ? ' (' + x.e.memo + ')' : '')
+                            : '📏 실사 ' + x.e.stock_check_kg + 'kg'}</span>
                         ${IS_LOCAL ? `<button onclick="delChickenEntry(${x.i})" style="border:none; background:none; color:#c92a2a; cursor:pointer; font-size:11px; padding:0;">삭제</button>` : ''}
                     </div>`).join('') + `</div>`;
             }
@@ -2966,6 +2969,7 @@
                     <input type="number" id="chkKg" step="0.5" min="0" placeholder="kg" style="width:75px; padding:5px 6px; border:1px solid #ddd; border-radius:6px; font-size:12.5px;">
                     <button class="save-btn" style="padding:6px 12px; font-size:12px;" onclick="addChickenEntry('received_kg')">+ 입고 저장</button>
                     <button class="save-btn" style="padding:6px 12px; font-size:12px; background:#1971c2;" onclick="addChickenEntry('stock_check_kg')">실사 재고 저장</button>
+                    <button class="save-btn" style="padding:6px 12px; font-size:12px; background:#868e96;" onclick="addChickenEntry('used_kg')">소진 저장 (서비스·시식)</button>
                     <span id="chkMsg" style="font-size:12px;"></span>
                 </div>`;
             }
