@@ -3054,25 +3054,40 @@
                 `).join('');
             });
 
-            // 배민/쿠팡이츠 리뷰 (사장님이 직접 전달, 수동 등록)
-            loadJson('./processed/manual_reviews.json').then(mr => {
+            // 배민/쿠팡이츠 리뷰 (사장님이 직접 전달, 수동 등록) — 채널 필터 지원
+            window.renderManualReviews = function (filter) {
+                window._manualReviewFilter = filter;
                 const list = document.getElementById('manualReviewList');
-                if (!mr || !mr.reviews || !mr.reviews.length) {
+                const all = window._manualReviews || [];
+                if (!all.length) {
                     list.innerHTML = '<div class="empty-note">아직 등록된 리뷰가 없습니다. 새 리뷰가 올라오면 캡처/텍스트로 전달해주세요.</div>';
                     return;
                 }
-                const sorted = [...mr.reviews].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                const cntOf = ch => all.filter(r => r.channel === ch).length;
                 document.getElementById('manualReviewTitle').textContent =
-                    `🛵 배민 · 쿠팡이츠 리뷰 (수동 등록) · 총 ${sorted.length}개`;
-                list.innerHTML = sorted.map(r => `
+                    `🛵 배민 · 쿠팡이츠 리뷰 (수동 등록) · 총 ${all.length}개`;
+                const mkBtn = (label, count) => {
+                    const on = filter === label;
+                    return `<button onclick="renderManualReviews('${label}')" style="padding:5px 14px; font-size:12px; border-radius:14px; cursor:pointer; border:1px solid ${on ? '#501100' : '#ddd'}; background:${on ? '#501100' : '#fff'}; color:${on ? '#fff' : '#666'}; font-weight:${on ? '700' : '400'};">${label}${count != null ? ' ' + count : ''}</button>`;
+                };
+                const bar = `<div style="display:flex; gap:6px; margin-bottom:10px;">` +
+                    mkBtn('전체', all.length) + mkBtn('배민', cntOf('배민')) + mkBtn('쿠팡이츠', cntOf('쿠팡이츠')) + `</div>`;
+                const shown = (filter === '전체' ? all : all.filter(r => r.channel === filter))
+                    .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                list.innerHTML = bar + (shown.length === 0
+                    ? '<div class="empty-note">이 채널의 리뷰가 없습니다</div>'
+                    : shown.map(r => `
                     <div class="review-card">
                         <div class="review-head">
                             <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
                             <span class="review-meta">[${r.channel || '?'}] ${r.date || ''}${r.author ? ' · ' + r.author : ''}${r.menu ? ' · ' + r.menu : ''}</span>
                         </div>
                         <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
-                    </div>
-                `).join('');
+                    </div>`).join(''));
+            };
+            loadJson('./processed/manual_reviews.json').then(mr => {
+                window._manualReviews = (mr && mr.reviews) || [];
+                renderManualReviews(window._manualReviewFilter || '전체');
             });
 
             const m = await loadJson('./processed/marketing_stats.json');
