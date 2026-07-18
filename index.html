@@ -2717,8 +2717,10 @@
                 '2026-07-17': { label: '제헌절 임시공휴일', holiday: true },
                 '2026-07-25': { label: '중복', boost: true },
                 '2026-08-14': { label: '말복', boost: true },
-                '2026-08-15': { label: '광복절', holiday: true },
-                '2026-08-17': { label: '광복절 대체공휴일', holiday: true },
+                // drain: 주말에 붙는 긴 연휴 — 가족 여행 유출로 수요 하락 (현충일 주말 -14% 실측). 주문 추천에서 15% 감산
+                '2026-08-15': { label: '광복절(토·3일 연휴 시작)', holiday: true, drain: true },
+                '2026-08-16': { label: '광복절 연휴 중 일요일', drain: true },
+                '2026-08-17': { label: '광복절 대체공휴일(월)', holiday: true, drain: true },
                 '2026-09-24': { label: '추석 연휴', holiday: true },
                 '2026-09-25': { label: '추석', holiday: true },
                 '2026-09-26': { label: '추석 연휴', holiday: true },
@@ -2794,11 +2796,13 @@
                 orderCover.forEach(off => {
                     const d = new Date(); d.setDate(d.getDate() + off);
                     const iso = isoOf(d);
-                    const dayNeed = (stats[d.getDay()] ? stats[d.getDay()].rec : 0) + groupKgOf0(iso);
+                    const e0 = EVENT_DAYS[iso];
+                    const drainMult = (e0 && e0.drain) ? 0.85 : 1; // 연휴 주말 여행 유출 감산 (현충일 -14% 근거)
+                    const dayNeed = (stats[d.getDay()] ? stats[d.getDay()].rec : 0) * drainMult + groupKgOf0(iso);
                     needKg += dayNeed;
                     needParts.push(`${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]}) ${F(dayNeed)}`);
-                    const e0 = EVENT_DAYS[iso];
-                    if (e0 && (e0.boost || e0.holiday)) evNote += ` ⚠️${e0.label} — 여유 있게!`;
+                    if (e0 && e0.drain) evNote += ` ✈️${e0.label} — 연휴 유출 15% 감산 적용`;
+                    else if (e0 && (e0.boost || e0.holiday)) evNote += ` ⚠️${e0.label} — 여유 있게!`;
                 });
                 const inv0 = invInfo ? invInfo.inv : 0;
                 const orderKg = Math.max(0, Math.ceil((needKg - inv0) / 10) * 10);
@@ -2821,7 +2825,9 @@
                 const dayAfter = new Date(tomorrow); dayAfter.setDate(dayAfter.getDate() + 1);
                 const ev = EVENT_DAYS[tIso], evNext = EVENT_DAYS[isoOf(dayAfter)];
                 let eventBanner = '';
-                if (ev && ev.boost) {
+                if (ev && ev.drain) {
+                    eventBanner += `<div style="font-size:13px; font-weight:700; color:#1971c2; background:#e7f5ff; border-radius:6px; padding:8px 10px; margin-bottom:6px;">✈️ 내일은 <b>${ev.label}</b> — 주말에 붙는 긴 연휴는 가족 여행 유출로 수요가 오히려 줄어요 (현충일 주말 −14% 실측). 평소 주말보다 보수적으로 준비하세요</div>`;
+                } else if (ev && ev.boost) {
                     eventBanner += `<div style="font-size:13px; font-weight:700; color:#e03131; background:#fff5f5; border-radius:6px; padding:8px 10px; margin-bottom:6px;">🔥 내일은 <b>${ev.label}</b>! 닭 수요가 평소보다 크게 뛸 수 있어요 — 요일 통계보다 역대 최대(${F(ts.max)}kg) 이상으로 준비를 추천합니다</div>`;
                 } else if (ev && ev.holiday) {
                     eventBanner += `<div style="font-size:13px; font-weight:700; color:#e8590c; background:#fff4e6; border-radius:6px; padding:8px 10px; margin-bottom:6px;">🎌 내일은 <b>${ev.label}</b>(공휴일) — 평일이어도 주말 수준 수요가 나올 수 있어요</div>`;
@@ -2897,7 +2903,7 @@
                 const dLabel = `${d.getMonth() + 1}/${d.getDate()}`;
                 const parts = [];
                 const e = EVENT_DAYS[iso];
-                if (e) parts.push(`${e.boost ? '🔥' : '🎌'}${e.label}`);
+                if (e) parts.push(`${e.drain ? '✈️' : e.boost ? '🔥' : '🎌'}${e.label}${e.drain ? '(수요↓)' : ''}`);
                 const nx = new Date(d); nx.setDate(nx.getDate() + 1);
                 const eNext = EVENT_DAYS[isoOf(nx)];
                 if (eNext && eNext.holiday && !(e && e.holiday)) parts.push(`${eNext.label} 전날`);
@@ -2923,7 +2929,7 @@
                 const iso = isoOf(d);
                 const dLabel = `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
                 const e = EVENT_DAYS[iso];
-                if (e) upcoming.push(`${e.label} ${dLabel}${e.boost ? '🔥' : ''}`);
+                if (e) upcoming.push(`${e.label} ${dLabel}${e.drain ? '✈️' : e.boost ? '🔥' : ''}`);
                 const g = groupByDate[iso];
                 if (g) upcoming.push(`📋단체 +${g.kg.toFixed(1)}kg ${dLabel}`);
             }
