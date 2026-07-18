@@ -2041,13 +2041,13 @@
         let menuCosts = null;
 
         // 매입가(raw)에서 단위 원가 자동 계산
-        // 고정 사용량: 닭 반350g/한750g/두1.5kg, 파우더 130g/닭kg, 양념 150g/간장 100g(반마리 실측), 기름 2통/100건, 떡 반40g/한80g
+        // 고정 사용량: 닭 반350g/한700g/두1.4kg(생닭 기준), 파우더 130g/닭kg, 양념 150g/간장 100g(반마리 실측), 기름 2통/100건, 떡 반40g/한80g
         function applyDerivedCosts(mc) {
             const r = mc && mc.raw;
             if (!r) return mc;
             const R = Math.round;
             const perKg = (r['닭 1kg'] || 0) + (r['파우더 5kg'] || 0) / 5 * 0.13;
-            mc.chicken_base = { '반마리': R(perKg * 0.35), '한마리': R(perKg * 0.75), '두마리': R(perKg * 1.5) };
+            mc.chicken_base = { '반마리': R(perKg * 0.35), '한마리': R(perKg * 0.70), '두마리': R(perKg * 1.4) };
             // 실측 사용량(반마리 기준): 양념 150g, 매콤간장 100g
             const yangnyeom = R((r['양념소스 10kg'] || 0) / 10000 * 150);
             mc.sauce_per_half = {
@@ -2654,7 +2654,7 @@
 
         // 오늘 닭 사용량 실시간 추정 (아카이브 전) — archive_and_summarize.ps1의 파싱 규칙과 동일
         function estimateChickenKg(orders) {
-            const G = { '반마리': 350, '한마리': 750, '두마리': 1500 };
+            const G = { '반마리': 350, '한마리': 700, '두마리': 1400 }; // 생닭 기준 (사용자 확정 2026-07-18)
             let g = 0;
             (orders || []).forEach(o => {
                 if (o.cancelled) return;
