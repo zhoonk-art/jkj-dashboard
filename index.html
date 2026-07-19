@@ -2813,6 +2813,18 @@
                 </div>`;
             } else {
                 orderBanner = `<div style="font-size:13px; color:#666; background:#f5f2f0; border-radius:8px; padding:8px 12px; margin-bottom:8px;">🛒 오늘 밤은 닭 주문이 없는 날입니다 — 다음 주문: 월요일 밤 (화요일 아침 납품)</div>`;
+                // 예외: 휴무일(월요일 등)에 단체 납품이 잡혀 있으면 전날 밤 별도 주문 경고
+                const nx = new Date(); nx.setDate(nx.getDate() + 1);
+                const nxIso = isoOf(nx);
+                const nxGroup = groupKgOf0(nxIso);
+                if (nxGroup > 0 && nowDow === 0) {
+                    const inv0 = invInfo ? invInfo.inv : 0;
+                    const needExtra = Math.max(0, Math.ceil((nxGroup - inv0) / 10) * 10);
+                    orderBanner = `<div style="font-size:14px; font-weight:800; color:#fff; background:linear-gradient(135deg,#c92a2a,#a61e1e); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+                        ⚠️ 내일(월 휴무) 단체 납품 ${F(nxGroup)}kg — ${(groupByDate[nxIso] ? groupByDate[nxIso].names.join(', ') : '')}
+                        <div style="font-weight:500; font-size:12.5px; opacity:0.95; margin-top:3px;">오늘 밤 도축업체에 별도 주문 필요! 장부 재고 ${F(inv0)}kg 감안 시 ${needExtra > 0 ? needExtra + 'kg 주문 추천' : '재고로 충당 가능'} (월요일 아침 납품 가능 여부 업체 확인)</div>
+                    </div>` + orderBanner;
+                }
             }
 
             const ts = stats[tDow];
