@@ -1007,6 +1007,11 @@
                 <p class="settings-note">3월부터의 요일별 실제 닭 사용량(주문 기준)으로 계산합니다. 단체·선결제 예약분은 별도로 더해주세요.</p>
                 <div id="chickenForecastBox"><div class="empty-note">데이터 준비 중... (22:30 아카이브 후 생성됩니다)</div></div>
             </div>
+            <div class="orders-section" style="margin-bottom: 12px; border-left: 4px solid #1971c2;">
+                <h2>🎯 배민 클릭광고 최적가 탐색</h2>
+                <p class="settings-note">입찰가 구간별로 배민 주문·매출·순이익을 비교해 광고비의 꼭지점을 찾습니다. 입찰가를 바꾸면 Claude에게 알려주세요 — 이력에 기록됩니다. 배민 광고 리포트의 일별 지출도 전달해주시면 순이익 계산이 정확해집니다.</p>
+                <div id="bmAdLabBox"><div class="empty-note">데이터 준비 중...</div></div>
+            </div>
             <div class="orders-section" style="margin-bottom: 12px;">
                 <h2>🔥 요일 × 시간대 평균 주문 건수</h2>
                 <p class="settings-note">영업일 기준 시간당 평균 주문 건수 — 닭 예측처럼 최근 데이터에 비중을 더 둔 가중 평균(반감기 4주)입니다. 진할수록 바쁜 시간대.</p>
@@ -2956,7 +2961,17 @@
                 const editBtn = IS_LOCAL
                     ? ` <button onclick="setChickenStock(${curInv.toFixed(1)})" style="border:1px solid #ddd; background:#fff; color:#1971c2; border-radius:6px; padding:2px 10px; font-size:11.5px; cursor:pointer; vertical-align:2px;">✏️ 재고 수정</button>`
                     : '';
-                ledgerHtml += `<div style="font-size:13px; margin-bottom:4px;">현재 장부 재고: <b style="color:${invColor}; font-size:17px;">${F(curInv)}kg</b>${editBtn} <span style="color:#888; font-size:12px;">${invInfo ? '= 입고 누계 − 판매 사용량' + (cd[tIso0] == null ? ' (오늘 사용분 ' + F(todayUsedBase + groupKgOf0(tIso0)) + 'kg는 실시간 추정)' : '') : '(기록이 없어 0 가정 — 재고 수정을 누르면 지금 있는 닭부터 시작합니다)'}</span></div>`;
+                // 오늘 사용량 전용 줄: 원격(모바일)에서도 항상 보이게 별도 표기 (판매 + 단체 + 서비스·시식)
+                const todayExtra = (((ledger && ledger.entries) || []).filter(e => e.date === tIso0 && typeof e.used_kg === 'number')
+                    .reduce((s, e) => s + e.used_kg, 0));
+                const todayGroup = groupKgOf0(tIso0);
+                const todayTotalUse = todayUsedBase + todayGroup + todayExtra;
+                const parts = [`판매 ${F(todayUsedBase)}`];
+                if (todayGroup > 0) parts.push(`단체 ${F(todayGroup)}`);
+                if (todayExtra > 0) parts.push(`서비스·시식 ${F(todayExtra)}`);
+                const useTag = cd[tIso0] != null ? '마감 확정' : (latest && latest.date === tIso0 ? '실시간 추정 · 10분마다 갱신' : '주문 데이터 대기 중');
+                ledgerHtml += `<div style="font-size:13px; margin-bottom:4px;">🍗 오늘 판매 사용량: <b style="font-size:16px;">${F(todayTotalUse)}kg</b> <span style="color:#888; font-size:12px;">(${parts.join(' + ')}kg · ${useTag})</span></div>`;
+                ledgerHtml += `<div style="font-size:13px; margin-bottom:4px;">현재 장부 재고: <b style="color:${invColor}; font-size:17px;">${F(curInv)}kg</b>${editBtn} <span style="color:#888; font-size:12px;">${invInfo ? '= 입고 누계 − 판매 사용량' : '(기록이 없어 0 가정 — 재고 수정을 누르면 지금 있는 닭부터 시작합니다)'}</span></div>`;
             }
             if (invInfo) {
                 if (invInfo.inv < 0) {
@@ -3002,6 +3017,84 @@
                 ${ledgerHtml}
                 ${upcomingLine}
                 <p class="settings-note" style="margin-top:8px;">가중평균 = 최근 데이터에 비중을 더 준 평균 (4주 전 데이터는 비중 절반). 사용 예상 = 가중평균×1.1. 납품 필요 = 그날 아침 받는 양 (금요일 = 금·토·일 3일치, 월요일 휴무 기준). 밤 주문 = 그날 마감 때 넣을 주문의 10kg 단위 참고치(재고 미반영) — 실제 추천은 맨 위 배너가 장부 재고를 빼고 계산합니다. 복날·공휴일·단체 예약은 자동 반영됩니다.</p>`;
+        }
+
+        // 배민 클릭광고 최적가 탐색: bm_ad_log(입찰가 이력·광고 지출) × marketing_stats.bm_daily(일별 배민 매출) 조인
+        async function renderBmAdLab(m) {
+            const box = document.getElementById('bmAdLabBox');
+            if (!box) return;
+            const log = await loadJson('./processed/bm_ad_log.json');
+            if (!log || !log.bid_history || !log.bid_history.length) {
+                box.innerHTML = '<div class="empty-note">입찰가 이력이 아직 없습니다 (config\\bm_ad_log.json)</div>';
+                return;
+            }
+            await loadFees();
+            const bmDaily = Object.assign({}, m.bm_daily || {});
+            // 오늘분은 실시간 주문에서 보충 (아카이브 전)
+            const tIso = todayStr();
+            if (!bmDaily[tIso]) {
+                const latest = await loadJson('./processed/orders_latest.json');
+                if (latest && latest.date === tIso && latest.orders) {
+                    const d = { cnt: 0, amt: 0, ch: {} };
+                    latest.orders.filter(o => !o.cancelled && (o.channel || '').indexOf('배달의민족') === 0).forEach(o => {
+                        d.cnt++; d.amt += o.amount;
+                        if (!d.ch[o.channel]) d.ch[o.channel] = { cnt: 0, amt: 0 };
+                        d.ch[o.channel].cnt++; d.ch[o.channel].amt += o.amount;
+                    });
+                    if (d.cnt > 0) bmDaily[tIso] = d;
+                }
+            }
+            // 채널별 수수료 반영 정산액 (orderNet과 동일 공식을 일 단위 집계에 적용)
+            const settleOf = day => {
+                let net = 0;
+                Object.keys(day.ch || {}).forEach(chName => {
+                    const c = day.ch[chName];
+                    const f = feeFor(chName);
+                    const fee = Math.round(c.amt * (f.med + f.pay + f.ad) / 100) + f.del * c.cnt;
+                    net += c.amt - Math.round(fee * 1.1); // 부가세 10% 포함
+                });
+                return net;
+            };
+            const matRate = typeof log.mat_rate === 'number' ? log.mat_rate : 0.42;
+            const F0 = n => Math.round(n).toLocaleString();
+            const rows = log.bid_history.map(p => {
+                const end = p.end || tIso;
+                let bizDays = 0, days = 0, cnt = 0, amt = 0, settle = 0;
+                for (let d = new Date(p.start + 'T00:00:00'); ; d.setDate(d.getDate() + 1)) {
+                    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    if (iso > end) break;
+                    if (d.getDay() !== 1) bizDays++; // 월요일 휴무 제외
+                    const bd = bmDaily[iso];
+                    if (bd) { days++; cnt += bd.cnt; amt += bd.amt; settle += settleOf(bd); }
+                }
+                // 광고 지출: 일별 기록이 있으면 그것으로, 없으면 기준선 집계로
+                const spendRows = (log.daily || []).filter(x => x.date >= p.start && x.date <= end);
+                let spendPerDay = null;
+                if (spendRows.length) spendPerDay = spendRows.reduce((s, x) => s + x.spend, 0) / spendRows.length;
+                else if (log.baseline_agg && log.baseline_agg.bid === p.bid) spendPerDay = log.baseline_agg.spend / Math.max(1, bizDays);
+                const revDay = bizDays ? amt / bizDays : 0;
+                const settleDay = bizDays ? settle / bizDays : 0;
+                const profitDay = spendPerDay != null ? settleDay - revDay * matRate - spendPerDay : null;
+                return { p, bizDays, cnt, revDay, settleDay, spendPerDay, profitDay, ongoing: !p.end };
+            });
+            // 순이익/일 최고 구간 표시 (지출 데이터가 있는 구간 중)
+            const best = rows.filter(r => r.profitDay != null && r.bizDays >= 3)
+                .reduce((a, b) => (a == null || b.profitDay > a.profitDay) ? b : a, null);
+            box.innerHTML = `<div style="overflow-x:auto;">
+                <table class="heat-table" style="min-width:560px;">
+                    <tr><th>입찰가</th><th>기간</th><th>영업일</th><th>주문/일</th><th>매출/일</th><th>정산/일</th><th>광고비/일</th><th>순이익/일*</th></tr>
+                    ${rows.map(r => `<tr style="${r.ongoing ? 'background:#fff8f0; font-weight:700;' : ''}">
+                        <td>${r.p.bid}원${r.ongoing ? ' <span style="color:#e8590c;">◀ 진행 중</span>' : ''}${best === r ? ' 🏆' : ''}</td>
+                        <td style="font-size:12px;">${r.p.start.slice(5).replace('-', '/')}~${(r.p.end || '').slice(5).replace('-', '/') || '현재'}</td>
+                        <td>${r.bizDays}일</td>
+                        <td>${r.bizDays ? (r.cnt / r.bizDays).toFixed(1) : '-'}건</td>
+                        <td>${F0(r.revDay)}원</td>
+                        <td>${F0(r.settleDay)}원</td>
+                        <td>${r.spendPerDay != null ? F0(r.spendPerDay) + '원' : '<span style="color:#aaa;">미입력</span>'}</td>
+                        <td style="color:${r.profitDay == null ? '#aaa' : r.profitDay < 0 ? '#e03131' : '#2b8a3e'};">${r.profitDay != null ? F0(r.profitDay) + '원' : '—'}</td>
+                    </tr>`).join('')}
+                </table></div>
+                <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 정산액(수수료·부가세 차감) − 재료비(매출×${Math.round(matRate * 100)}%) − 광고비. 배민 채널(앱배달·가게배달·포장) 전체 기준이며 운영비(고정비)는 뺀 값이 아닙니다 — 입찰가끼리 비교하는 용도입니다. 광고비가 '미입력'인 구간은 배민 광고 리포트의 일별 지출을 알려주시면 채워집니다. 계획: 225원 실험 판정(8/3) 후 50~100원씩 단계적으로 올리며 순이익/일이 꺾이는 꼭지점을 찾습니다.</p>`;
         }
 
         async function renderMarketing() {
@@ -3116,6 +3209,7 @@
 
             // ---- 0. 내일 닭 준비량 예측 ----
             renderChickenForecast(m);
+            renderBmAdLab(m);
 
             // ---- 1. 요일x시간 히트맵 (11시~22시) ----
             const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
