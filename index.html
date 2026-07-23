@@ -2803,11 +2803,13 @@
                     const iso = isoOf(d);
                     const e0 = EVENT_DAYS[iso];
                     const drainMult = (e0 && e0.drain) ? 0.85 : 1; // 연휴 주말 여행 유출 감산 (현충일 -14% 근거)
-                    const dayNeed = (stats[d.getDay()] ? stats[d.getDay()].rec : 0) * drainMult + groupKgOf0(iso);
+                    const boostMult = (e0 && e0.boost) ? 1.4 : 1; // 복날 등 수요 급증일 +40% (초복 7/15 실측 +75%를 주말 기저 감안해 보수 적용)
+                    const dayNeed = (stats[d.getDay()] ? stats[d.getDay()].rec : 0) * drainMult * boostMult + groupKgOf0(iso);
                     needKg += dayNeed;
-                    needParts.push(`${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]}) ${F(dayNeed)}`);
+                    needParts.push(`${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]}) ${F(dayNeed)}${e0 && e0.boost ? '🔥' : ''}`);
                     if (e0 && e0.drain) evNote += ` ✈️${e0.label} — 연휴 유출 15% 감산 적용`;
-                    else if (e0 && (e0.boost || e0.holiday)) evNote += ` ⚠️${e0.label} — 여유 있게!`;
+                    else if (e0 && e0.boost) evNote += ` 🔥${e0.label} — 복날 수요 +40% 반영(초복 실측 +75% 기준 보수 적용)`;
+                    else if (e0 && e0.holiday) evNote += ` ⚠️${e0.label} — 여유 있게!`;
                 });
                 const inv0 = invInfo ? invInfo.inv : 0;
                 const orderKg = Math.max(0, Math.ceil((needKg - inv0) / 10) * 10);
