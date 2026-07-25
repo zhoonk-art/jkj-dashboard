@@ -1105,6 +1105,37 @@
             chartInstances[canvasId] = new Chart(ctx, config);
         }
 
+        // 평균선 플러그인: options.avgLine = { value } 가 있으면 빨간 점선 가로선 + 평균 금액 라벨 표시
+        const avgLinePlugin = {
+            id: 'avgLine',
+            afterDatasetsDraw(chart) {
+                const opt = chart.config.options && chart.config.options.avgLine;
+                if (!opt || !(opt.value > 0)) return;
+                const ys = chart.scales.y;
+                if (!ys) return;
+                const y = ys.getPixelForValue(opt.value);
+                const ctx = chart.ctx, area = chart.chartArea;
+                if (y < area.top || y > area.bottom) return;
+                ctx.save();
+                ctx.strokeStyle = '#e03131';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath(); ctx.moveTo(area.left, y); ctx.lineTo(area.right, y); ctx.stroke();
+                ctx.setLineDash([]);
+                const txt = (opt.label || '평균') + ' ' + Math.round(opt.value).toLocaleString() + '원';
+                ctx.font = 'bold 11px sans-serif';
+                const tw = ctx.measureText(txt).width;
+                const tx = area.right - tw - 6;
+                const ty = (y - 8 < area.top + 4) ? y + 15 : y - 7; // 선이 상단에 붙으면 라벨은 아래로
+                ctx.fillStyle = 'rgba(255,255,255,0.88)';
+                ctx.fillRect(tx - 4, ty - 11, tw + 8, 15);
+                ctx.fillStyle = '#e03131';
+                ctx.fillText(txt, tx, ty);
+                ctx.restore();
+            }
+        };
+        Chart.register(avgLinePlugin);
+
         // ----- 시간대별 매출: 요일 필터 -----
         let hourlyDowSel = 'all'; // 'all' 또는 0(일)~6(토)
         const HOURLY_DOW_OPTS = [['all', '전체'], [1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [0, '일']];
@@ -1788,6 +1819,10 @@
                 daily.push({ date: todayData.date, total_amount: todayData.summary.total_amount });
             }
 
+            // 일 평균: 진행 중인 오늘은 제외하고 계산
+            const dailyDone = daily.filter(d => d.date !== todayStr());
+            const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount, 0) / dailyDone.length : 0;
+
             drawChart('trendChart', {
                 type: 'bar',
                 data: {
@@ -1801,6 +1836,8 @@
                 },
                 options: {
                     responsive: true,
+                    animation: false,
+                    avgLine: { value: dailyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -1823,6 +1860,10 @@
             });
             const weekKeys = Object.keys(weekly).sort().slice(-12); // 문자열 정렬 = year_week 순, 최근 12주만
 
+            // 주 평균: 진행 중인 이번 주(마지막 키)는 제외
+            const weekDone = weekKeys.slice(0, -1);
+            const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w], 0) / weekDone.length : 0;
+
             drawChart('weeklyChart', {
                 type: 'bar',
                 data: {
@@ -1835,6 +1876,8 @@
                 },
                 options: {
                     responsive: true,
+                    animation: false,
+                    avgLine: { value: weeklyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
                         tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
@@ -1851,6 +1894,11 @@
                 drawHourlyChart(hourlyDowSel);
             }
 
+            // 월 평균: 진행 중인 이번 달은 제외
+            const curYm = todayStr().substring(0, 7);
+            const monthDone = months.filter(m => m !== curYm);
+            const monthlyAvg = monthDone.length ? monthDone.reduce((s, m) => s + monthly[m].month_total, 0) / monthDone.length : 0;
+
             // 월별 매출
             drawChart('monthlyChart', {
                 type: 'bar',
@@ -1864,6 +1912,8 @@
                 },
                 options: {
                     responsive: true,
+                    animation: false,
+                    avgLine: { value: monthlyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
                         tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
