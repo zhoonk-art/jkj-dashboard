@@ -3086,14 +3086,23 @@
                 const profitDay = spendPerDay != null ? settleDay - revDay * matRate - spendPerDay : null;
                 return { p, bizDays, cnt, revDay, settleDay, spendPerDay, roas, profitDay, ongoing: !p.end };
             });
-            // 순이익/일 최고 구간 표시 (지출 데이터가 있는 구간 중)
+            // 순이익/일 최고(🏆) + 매출/일 최고(📈) 구간 표시 — 매출(성장)과 순익을 함께 보고 판단
             const best = rows.filter(r => r.profitDay != null && r.bizDays >= 3)
                 .reduce((a, b) => (a == null || b.profitDay > a.profitDay) ? b : a, null);
+            const bestRev = rows.filter(r => r.bizDays >= 3)
+                .reduce((a, b) => (a == null || b.revDay > a.revDay) ? b : a, null);
+            const revGapPct = (best && bestRev && best !== bestRev && bestRev.revDay > 0)
+                ? Math.round((1 - best.revDay / bestRev.revDay) * 100) : 0;
+            const verdictLine = best ? `<div style="font-size:13px; margin-top:8px; padding:8px 10px; background:#f0f7f0; border-radius:8px;">
+                🏆 순이익 최적: <b>${best.p.bid}원</b> (일 ${F0(best.profitDay)}원)` +
+                (bestRev && best !== bestRev
+                    ? ` · 📈 매출 최고: <b>${bestRev.p.bid}원</b> (일 ${F0(bestRev.revDay)}원, 순이익 최적 대비 매출 +${revGapPct}%) — 순익과 매출이 다른 입찰가를 가리키므로 성장 우선이면 ${bestRev.p.bid}원도 후보`
+                    : ` · 📈 매출도 이 구간이 최고 — 순익·매출 모두 최적`) + `</div>` : '';
             box.innerHTML = `<div style="overflow-x:auto;">
                 <table class="heat-table" style="min-width:620px;">
                     <tr><th>입찰가</th><th>기간</th><th>영업일</th><th>주문/일</th><th>매출/일</th><th>정산/일</th><th>광고비/일</th><th>ROAS</th><th>순이익/일*</th></tr>
                     ${rows.map(r => `<tr style="${r.ongoing ? 'background:#fff8f0; font-weight:700;' : ''}">
-                        <td>${r.p.bid}원${r.ongoing ? ' <span style="color:#e8590c;">◀ 진행 중</span>' : ''}${best === r ? ' 🏆' : ''}</td>
+                        <td>${r.p.bid}원${r.ongoing ? ' <span style="color:#e8590c;">◀ 진행 중</span>' : ''}${best === r ? ' 🏆' : ''}${bestRev === r ? ' 📈' : ''}</td>
                         <td style="font-size:12px;">${r.p.start.slice(5).replace('-', '/')}~${(r.p.end || '').slice(5).replace('-', '/') || '현재'}</td>
                         <td>${r.bizDays}일</td>
                         <td>${r.bizDays ? (r.cnt / r.bizDays).toFixed(1) : '-'}건</td>
@@ -3104,7 +3113,8 @@
                         <td style="color:${r.profitDay == null ? '#aaa' : r.profitDay < 0 ? '#e03131' : '#2b8a3e'};">${r.profitDay != null ? F0(r.profitDay) + '원' : '—'}</td>
                     </tr>`).join('')}
                 </table></div>
-                <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 정산액(수수료·부가세 차감) − 재료비(매출×${Math.round(matRate * 100)}%) − 광고비. 배민 채널(앱배달·가게배달·포장) 전체 기준이며 운영비(고정비)는 뺀 값이 아닙니다 — 입찰가끼리 비교하는 용도입니다. ROAS = 광고매출 ÷ 광고지출(배민 리포트 기준). <b>판단 기준은 순이익/일과 ROAS</b> — 노출수는 참고만 합니다(주문과 상관 낮음, 사장님 확정 7/25). 광고비가 '미입력'인 구간은 배민 광고 리포트의 일별 지출을 알려주시면 채워집니다. 계획: 225원 실험 판정(8/3) 후 50~100원씩 단계적으로 올리며 순이익/일이 꺾이는 꼭지점을 찾습니다.</p>`;
+                ${verdictLine}
+                <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 정산액(수수료·부가세 차감) − 재료비(매출×${Math.round(matRate * 100)}%) − 광고비. 배민 채널(앱배달·가게배달·포장) 전체 기준이며 운영비(고정비)는 뺀 값이 아닙니다 — 입찰가끼리 비교하는 용도입니다. ROAS = 광고매출 ÷ 광고지출(배민 리포트 기준). <b>판단 기준은 순이익/일(🏆)과 매출/일(📈)을 함께</b> — 월매출 1억 목표라 매출 성장도 같이 감시하며, 노출수는 참고만 합니다(주문과 상관 낮음, 사장님 확정 7/25). 광고비가 '미입력'인 구간은 배민 광고 리포트의 일별 지출을 알려주시면 채워집니다. 계획: 225원 실험 판정(8/3) 후 50~100원씩 단계적으로 올리며 순이익·매출이 함께 꺾이는 꼭지점을 찾습니다.</p>`;
         }
 
         async function renderMarketing() {
