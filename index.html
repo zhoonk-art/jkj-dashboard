@@ -1433,7 +1433,7 @@
                 const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
                 activeOrders.forEach(o => {
                     const n = orderNet(o).net;
-                    const c = orderCost(o);
+                    const c = orderCost(o, dateStr);
                     netSum += n; matSum += c;
                     const t = byType[o.type] || byType.takeout;
                     t.margin += n - c;
@@ -1929,7 +1929,7 @@
             const tot = { med: 0, pay: 0, del: 0, ad: 0, vat: 0 };
             orders.forEach(o => {
                 const r = orderNet(o);
-                const mat = orderCost(o);
+                const mat = orderCost(o, data.date);
                 gross += o.amount;
                 totalFee += r.fee;
                 totalMat += mat;
@@ -2107,7 +2107,19 @@
         }
 
         // 주문 1건의 재료비 추정
-        function orderCost(order) {
+        // 닭 kg단가를 날짜 기준으로 조회 (menu_costs.chicken_price_history — 입고 배치 단가 반영)
+        function chickenBaseOn(sz, dateStr) {
+            const mc = menuCosts;
+            const hist = mc && mc.chicken_price_history;
+            if (!hist || !hist.length || !dateStr) return (mc && mc.chicken_base && mc.chicken_base[sz]) || 0;
+            let perKg = hist[0].per_kg;
+            hist.forEach(h => { if (h.from <= dateStr) perKg = h.per_kg; });
+            const powder = ((mc.raw && mc.raw['파우더 5kg']) || 0) / 5 * 0.13;
+            const g = { '반마리': 0.35, '한마리': 0.70, '두마리': 1.4 };
+            return Math.round((perKg + powder) * (g[sz] || 0));
+        }
+
+        function orderCost(order, costDate) {
             if (typeof order.cost === 'number') return order.cost; // 선결제 가상주문 등 원가가 직접 지정된 경우
             if (!menuCosts) return 0;
             const mc = menuCosts;
@@ -2153,7 +2165,7 @@
                 if (hasChicken) {
                     chickenMenus += qty;
                     const sz = size || '반마리';
-                    cost += (mc.chicken_base[sz] || 0) * qty;
+                    cost += chickenBaseOn(sz, costDate) * qty; // 날짜별 닭 단가 (costDate 없으면 현재가)
 
                     // 박스
                     if (banban) cost += (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) * qty;
@@ -2402,14 +2414,14 @@
                 const act = od.orders.filter(o => !o.cancelled && !o.prepaid);
                 if (!act.length) continue;
                 days++;
-                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o); });
+                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o, d.date); });
             }
 
             const t = await loadJson('./processed/orders_latest.json');
             if (t && t.date && t.date.substring(0, 7) === ym && t.orders && !monthDays.some(x => x.date === t.date)) {
                 const act = t.orders.filter(o => !o.cancelled && !o.prepaid);
                 if (act.length > 0) days++;
-                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o); });
+                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o, t.date); });
             }
             return { gross: gross, net: net, mat: mat, days: days };
         }
