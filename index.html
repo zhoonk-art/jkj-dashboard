@@ -1809,6 +1809,29 @@
                 `;
             }).join('');
 
+            // 단체주문(이벤트성 선결제 납품) 날짜별 금액 — 평균선 계산에서 제외용 (막대에는 그대로 포함)
+            const ppStats = await loadJson('./processed/prepaid.json');
+            const grpByDate = {};
+            (((ppStats && ppStats.orders) || [])).forEach(o => {
+                if (o.status === 'delivered' && o.delivered_date &&
+                    (String(o.order_no || '').indexOf('단체') === 0 || /단체/.test(o.memo || ''))) {
+                    grpByDate[o.delivered_date] = (grpByDate[o.delivered_date] || 0) + (o.amount || 0);
+                }
+            });
+            const grpOf = date => grpByDate[date] || 0;
+            // 주/월 단위 합산 (주 키는 아카이브와 동일: 연도 + ISO식 주번호)
+            const grpByWeek = {}, grpByMonth = {};
+            Object.keys(grpByDate).forEach(d => {
+                const dt = new Date(d + 'T00:00:00');
+                const th = new Date(dt); th.setDate(th.getDate() + 3 - ((th.getDay() + 6) % 7)); // 그 주의 목요일
+                const jan1 = new Date(th.getFullYear(), 0, 1);
+                const wk = Math.ceil(((th - jan1) / 86400000 + 1) / 7);
+                const wkKey = `week_${dt.getFullYear()}_${String(wk).padStart(2, '0')}`;
+                grpByWeek[wkKey] = (grpByWeek[wkKey] || 0) + grpByDate[d];
+                const mKey = d.substring(0, 7);
+                grpByMonth[mKey] = (grpByMonth[mKey] || 0) + grpByDate[d];
+            });
+
             // 일별 추이 (최근 14일, 아카이브 + 오늘)
             let daily = [];
             if (index) {
@@ -1819,9 +1842,9 @@
                 daily.push({ date: todayData.date, total_amount: todayData.summary.total_amount });
             }
 
-            // 일 평균: 진행 중인 오늘은 제외하고 계산
+            // 일 평균: 진행 중인 오늘 제외 + 단체주문(이벤트) 금액 차감
             const dailyDone = daily.filter(d => d.date !== todayStr());
-            const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount, 0) / dailyDone.length : 0;
+            const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount - grpOf(d.date), 0) / dailyDone.length : 0;
 
             drawChart('trendChart', {
                 type: 'bar',
@@ -1837,7 +1860,7 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: dailyAvg, label: '평균' },
+                    avgLine: { value: dailyAvg, label: '평균(단체 제외)' },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -1860,9 +1883,9 @@
             });
             const weekKeys = Object.keys(weekly).sort().slice(-12); // 문자열 정렬 = year_week 순, 최근 12주만
 
-            // 주 평균: 진행 중인 이번 주(마지막 키)는 제외
+            // 주 평균: 진행 중인 이번 주(마지막 키) 제외 + 단체주문(이벤트) 금액 차감
             const weekDone = weekKeys.slice(0, -1);
-            const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w], 0) / weekDone.length : 0;
+            const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w] - (grpByWeek[w] || 0), 0) / weekDone.length : 0;
 
             drawChart('weeklyChart', {
                 type: 'bar',
@@ -1877,7 +1900,7 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: weeklyAvg, label: '평균' },
+                    avgLine: { value: weeklyAvg, label: '평균(단체 제외)' },
                     plugins: {
                         legend: { display: false },
                         tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
@@ -1894,10 +1917,10 @@
                 drawHourlyChart(hourlyDowSel);
             }
 
-            // 월 평균: 진행 중인 이번 달은 제외
+            // 월 평균: 진행 중인 이번 달 제외 + 단체주문(이벤트) 금액 차감
             const curYm = todayStr().substring(0, 7);
             const monthDone = months.filter(m => m !== curYm);
-            const monthlyAvg = monthDone.length ? monthDone.reduce((s, m) => s + monthly[m].month_total, 0) / monthDone.length : 0;
+            const monthlyAvg = monthDone.length ? monthDone.reduce((s, m) => s + monthly[m].month_total - (grpByMonth[m] || 0), 0) / monthDone.length : 0;
 
             // 월별 매출
             drawChart('monthlyChart', {
@@ -1913,7 +1936,7 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: monthlyAvg, label: '평균' },
+                    avgLine: { value: monthlyAvg, label: '평균(단체 제외)' },
                     plugins: {
                         legend: { display: false },
                         tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
