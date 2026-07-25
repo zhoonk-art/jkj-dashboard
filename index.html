@@ -907,7 +907,7 @@
                     <canvas id="monthlyChart"></canvas>
                 </div>
                 <div class="chart-card wide">
-                    <h3>🕐 시간대별 매출 (전체 기간 누적, 주문 접수시각 기준)</h3>
+                    <h3>🕐 시간대별 평균 주문 건수 (최근 가중, 주문 접수시각 기준)</h3>
                     <div id="hourlyDowFilter" style="display:flex; flex-wrap:wrap; gap:5px; margin:6px 0 10px;"></div>
                     <canvas id="hourlyChart" height="80"></canvas>
                 </div>
@@ -1166,9 +1166,10 @@
             for (let h = 11; h <= 23; h++) {
                 hLabels.push(h + '시');
                 if (dowSel === 'all') {
+                    // 전체 = 영업 요일(화~일) 6일 평균 건수 (월요일 휴무 제외)
                     let sum = 0;
-                    for (let d = 0; d < 7; d++) sum += heat[d][h];
-                    hData.push(sum);
+                    for (let d = 0; d < 7; d++) if (d !== 1) sum += heat[d][h];
+                    hData.push(Math.round(sum / 6 * 100) / 100);
                 } else {
                     hData.push(heat[dowSel][h]);
                 }
@@ -1178,7 +1179,7 @@
                 data: {
                     labels: hLabels,
                     datasets: [{
-                        label: '시간대 매출',
+                        label: '평균 주문 건수',
                         data: hData,
                         backgroundColor: '#f08c42',
                         borderRadius: 3
@@ -1186,11 +1187,12 @@
                 },
                 options: {
                     responsive: true,
+                    animation: false,
                     plugins: {
                         legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                        tooltip: { callbacks: { label: ctx => `평균 ${(ctx.parsed.y || 0).toFixed(1)}건` } }
                     },
-                    scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
+                    scales: { y: { ticks: { callback: v => v + '건' } } }
                 }
             });
         }
@@ -1860,7 +1862,7 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: dailyAvg, label: '평균(단체 제외)' },
+                    avgLine: { value: dailyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -1900,7 +1902,7 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: weeklyAvg, label: '평균(단체 제외)' },
+                    avgLine: { value: weeklyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
                         tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
@@ -1909,10 +1911,10 @@
                 }
             });
 
-            // 시간대별 매출 (marketing_stats의 heat_amount, 요일 필터 가능)
+            // 시간대별 평균 주문 건수 (marketing_stats의 heat_wavg — 최근 가중 평균, 요일 필터 가능)
             const mstats = await loadJson('./processed/marketing_stats.json');
-            if (mstats && mstats.heat_amount) {
-                window._hourlyHeat = mstats.heat_amount;
+            if (mstats && (mstats.heat_wavg || mstats.heat_amount)) {
+                window._hourlyHeat = mstats.heat_wavg || mstats.heat_count_3m;
                 renderHourlyDowFilter();
                 drawHourlyChart(hourlyDowSel);
             }
@@ -1936,7 +1938,7 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: monthlyAvg, label: '평균(단체 제외)' },
+                    avgLine: { value: monthlyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
                         tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
