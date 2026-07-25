@@ -2661,7 +2661,7 @@
         function estimateChickenKg(orders) {
             const G = { '반마리': 350, '한마리': 700, '두마리': 1400 }; // 생닭 기준 (사용자 확정 2026-07-18)
             let g = 0;
-            (orders || []).forEach(o => {
+            (orders || []).filter(Boolean).forEach(o => {
                 if (o.cancelled) return;
                 let optSize = null;
                 for (const it of (o.items || [])) {
@@ -3038,7 +3038,7 @@
                 const latest = await loadJson('./processed/orders_latest.json');
                 if (latest && latest.date === tIso && latest.orders) {
                     const d = { cnt: 0, amt: 0, ch: {} };
-                    latest.orders.filter(o => !o.cancelled && (o.channel || '').indexOf('배달의민족') === 0).forEach(o => {
+                    latest.orders.filter(o => o && !o.cancelled && (o.channel || '').indexOf('배달의민족') === 0).forEach(o => {
                         d.cnt++; d.amt += o.amount;
                         if (!d.ch[o.channel]) d.ch[o.channel] = { cnt: 0, amt: 0 };
                         d.ch[o.channel].cnt++; d.ch[o.channel].amt += o.amount;
