@@ -972,7 +972,7 @@
 
             <div class="orders-section" style="margin-bottom: 12px;">
                 <h2>🧾 월 운영비 설정</h2>
-                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×주일수×4.345주로 자동 계산됩니다.</p>
+                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×이번 달 실제 근무 요일 수로 자동 계산됩니다 (중도 입사는 시작일부터).</p>
                 <div id="costSettings"></div>
                 <button class="save-btn" onclick="addCostItem()" style="background:#8a4a1f; margin-right:6px;">+ 항목 추가</button>
                 <button class="save-btn" onclick="saveCosts()">운영비 저장</button>
@@ -2446,8 +2446,23 @@
             return costsConfig;
         }
 
-        function laborMonthly(l) {
-            return Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
+        // 해당 월(기본 이번 달)의 실제 요일 수로 인건비 계산. l.start/l.end(YYYY-MM-DD)가 있으면 그 기간만.
+        // weekdays 미지정 항목은 예전 방식(주당 일수 × 4.345주) 폴백.
+        function laborMonthly(l, ym) {
+            if (!Array.isArray(l.weekdays) || !l.weekdays.length) {
+                return Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
+            }
+            ym = ym || todayStr().substring(0, 7);
+            const y = +ym.substring(0, 4), m = +ym.substring(5, 7);
+            const lastDay = new Date(y, m, 0).getDate();
+            let cnt = 0;
+            for (let d = 1; d <= lastDay; d++) {
+                const iso = ym + '-' + String(d).padStart(2, '0');
+                if (l.start && iso < l.start) continue;
+                if (l.end && iso > l.end) continue;
+                if (l.weekdays.includes(new Date(y, m - 1, d).getDay())) cnt++;
+            }
+            return Math.round((l.hourly || 0) * (l.hours || 0) * cnt);
         }
 
         // 특정 날짜(dateStr, YYYY-MM-DD)에 실제로 근무하는 인건비만 합산 (weekdays 미지정 시 항상 포함)
@@ -2542,8 +2557,10 @@
                         hours: parseFloat(document.getElementById('labor-hours-' + i).value) || 0,
                         days: parseInt(document.getElementById('labor-days-' + i).value) || 0
                     };
-                    // weekdays도 설정 화면엔 입력칸이 없어 원본값 그대로 보존
+                    // weekdays/start/end도 설정 화면엔 입력칸이 없어 원본값 그대로 보존
                     if (Array.isArray(l.weekdays)) entry.weekdays = l.weekdays;
+                    if (l.start) entry.start = l.start;
+                    if (l.end) entry.end = l.end;
                     labor.push(entry);
                 }
             });
