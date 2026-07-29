@@ -468,6 +468,13 @@
             cursor: pointer;
         }
 
+        /* 적자(마진 마이너스) 날 */
+        .cal-cell.loss {
+            background: #ffe8e8;
+            border-color: #f3b6b6;
+        }
+        .cal-cell.loss .cal-amt { color: #c92a2a; font-weight: 700; }
+
         .cal-date {
             font-weight: 600;
             color: #555;
@@ -1763,7 +1770,7 @@
                 if (rec) {
                     monthTotal += rec.total_amount || 0;
                     html += `
-                        <div class="cal-cell has-data" onclick="showDate('${ds}')">
+                        <div class="cal-cell has-data" data-date="${ds}" onclick="showDate('${ds}')">
                             <div class="cal-date${sunCls}">${d}</div>
                             <div class="cal-amt">${((rec.total_amount || 0) / 10000).toFixed(1)}만</div>
                             <div class="cal-cnt cal-cnt-full">${rec.total_orders}건(내점${rec.takeout_count || 0}, 배달${rec.delivery_count || 0})</div>
@@ -1780,8 +1787,32 @@
                 }
             }
             html += '</div>';
-            html += `<div class="cal-month-total">이 달 합계: <b>${monthTotal.toLocaleString()}원</b></div>`;
+            html += `<div class="cal-month-total">이 달 합계: <b>${monthTotal.toLocaleString()}원</b> <span style="font-size:11.5px; color:#c92a2a;">■</span><span style="font-size:11.5px; color:#888;"> 빨간 날 = 마진 적자 (수수료·재료비·인건비·일할 고정비 차감 기준)</span></div>`;
             document.getElementById('calendarBox').innerHTML = html;
+            colorizeCalendarMargins(); // 비동기로 적자 날 빨간 표시
+        }
+
+        // 달력의 각 영업일 마진(실수령 − 재료비 − 인건비 − 일할 고정비)을 계산해 적자면 빨간색 표시
+        const _dayMarginCache = {};
+        async function colorizeCalendarMargins() {
+            await Promise.all([loadFees(), loadMenuCosts(), loadCosts()]);
+            const cells = [...document.querySelectorAll('#calendarBox .cal-cell.has-data[data-date]')];
+            await Promise.all(cells.map(async cell => {
+                const ds = cell.dataset.date;
+                if (!(ds in _dayMarginCache)) {
+                    const od = await loadJson(`./processed/archive/${ds}/orders_${ds.replace(/-/g, '')}.json`);
+                    if (!od || !od.orders) { _dayMarginCache[ds] = null; return; }
+                    let sum = 0;
+                    od.orders.filter(o => o && !o.cancelled && !o.prepaid)
+                        .forEach(o => { sum += orderNet(o).net - orderCost(o, ds); });
+                    _dayMarginCache[ds] = sum - laborForDate(ds) - dailyFixedCost();
+                }
+                const mg = _dayMarginCache[ds];
+                if (mg != null && mg < 0) {
+                    cell.classList.add('loss');
+                    cell.title = '이날 마진 ' + Math.round(mg).toLocaleString() + '원 (적자)';
+                }
+            }));
         }
 
         // ===== 통계 뷰 =====
