@@ -2952,9 +2952,11 @@
                     const dayNeed = (stats[d.getDay()] ? stats[d.getDay()].rec : 0) * drainMult * boostMult + groupKgOf0(iso);
                     needKg += dayNeed;
                     needParts.push(`${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]}) ${F(dayNeed)}${e0 && e0.boost ? '🔥' : ''}`);
-                    if (e0 && e0.drain) evNote += ` ✈️${e0.label} — 연휴 유출 15% 감산 적용`;
-                    else if (e0 && e0.boost) evNote += ` 🔥${e0.label} — 복날 수요 +40% 반영(초복 실측 +75% 기준 보수 적용)`;
-                    else if (e0 && e0.holiday) evNote += ` ⚠️${e0.label} — 여유 있게!`;
+                    let note0 = '';
+                    if (e0 && e0.drain) note0 = ` ✈️${e0.label} — 여행 유출 15% 감산 적용`;
+                    else if (e0 && e0.boost) note0 = ` 🔥${e0.label} — 복날 수요 +40% 반영(초복 실측 +75% 기준 보수 적용)`;
+                    else if (e0 && e0.holiday) note0 = ` ⚠️${e0.label} — 여유 있게!`;
+                    if (note0 && evNote.indexOf(note0) < 0) evNote += note0;
                 });
                 const inv0 = invInfo ? invInfo.inv : 0;
                 const orderKg = Math.max(0, Math.ceil((needKg - inv0) / 10) * 10);
