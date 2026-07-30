@@ -2857,6 +2857,16 @@
                 '2026-07-17': { label: '제헌절 임시공휴일', holiday: true },
                 '2026-07-25': { label: '중복', boost: true },
                 '2026-08-14': { label: '말복', boost: true },
+                // 여름 휴가철 (7월 말~8월 초 극성수기): 2026 실측 — 휴가철 첫 주 화·수 매출 반토막(46.5→21.4만, 51→27.7만). 주거지 특성상 가족 여행 유출. 매년 7월 마지막주~8월 첫주에 갱신
+                '2026-07-31': { label: '여름 휴가철', drain: true },
+                '2026-08-01': { label: '여름 휴가철', drain: true },
+                '2026-08-02': { label: '여름 휴가철', drain: true },
+                '2026-08-04': { label: '여름 휴가철', drain: true },
+                '2026-08-05': { label: '여름 휴가철', drain: true },
+                '2026-08-06': { label: '여름 휴가철', drain: true },
+                '2026-08-07': { label: '여름 휴가철', drain: true },
+                '2026-08-08': { label: '여름 휴가철', drain: true },
+                '2026-08-09': { label: '여름 휴가철', drain: true },
                 // drain: 주말에 붙는 긴 연휴 — 가족 여행 유출로 수요 하락 (현충일 주말 -14% 실측). 주문 추천에서 15% 감산
                 '2026-08-15': { label: '광복절(토·3일 연휴 시작)', holiday: true, drain: true },
                 '2026-08-16': { label: '광복절 연휴 중 일요일', drain: true },
@@ -2980,7 +2990,7 @@
                 const ev = EVENT_DAYS[tIso], evNext = EVENT_DAYS[isoOf(dayAfter)];
                 let eventBanner = '';
                 if (ev && ev.drain) {
-                    eventBanner += `<div style="font-size:13px; font-weight:700; color:#1971c2; background:#e7f5ff; border-radius:6px; padding:8px 10px; margin-bottom:6px;">✈️ 내일은 <b>${ev.label}</b> — 주말에 붙는 긴 연휴는 가족 여행 유출로 수요가 오히려 줄어요 (현충일 주말 −14% 실측). 평소 주말보다 보수적으로 준비하세요</div>`;
+                    eventBanner += `<div style="font-size:13px; font-weight:700; color:#1971c2; background:#e7f5ff; border-radius:6px; padding:8px 10px; margin-bottom:6px;">✈️ 내일은 <b>${ev.label}</b> — 가족 여행 유출로 수요가 줄어요 (현충일 주말 −14%, 2026 휴가철 평일 −50% 실측). 평소보다 보수적으로 준비하세요</div>`;
                 } else if (ev && ev.boost) {
                     eventBanner += `<div style="font-size:13px; font-weight:700; color:#e03131; background:#fff5f5; border-radius:6px; padding:8px 10px; margin-bottom:6px;">🔥 내일은 <b>${ev.label}</b>! 닭 수요가 평소보다 크게 뛸 수 있어요 — 요일 통계보다 역대 최대(${F(ts.max)}kg) 이상으로 준비를 추천합니다</div>`;
                 } else if (ev && ev.holiday) {
