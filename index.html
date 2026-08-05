@@ -2501,6 +2501,8 @@
             const dow = new Date(dateStr + 'T00:00:00').getDay();
             return (costsConfig.labor || []).reduce((s, l) => {
                 if (Array.isArray(l.weekdays) && !l.weekdays.includes(dow)) return s;
+                if (l.start && dateStr < l.start) return s;
+                if (l.end && dateStr > l.end) return s;
                 return s + Math.round((l.hourly || 0) * (l.hours || 0));
             }, 0);
         }
@@ -2576,7 +2578,11 @@
                 const name = document.getElementById('cost-name-' + i).value.trim();
                 const amount = parseInt(document.getElementById('cost-amt-' + i).value) || 0;
                 // 설정 화면엔 입력칸이 없는 daily 플래그는 원본값 그대로 보존 (안 그러면 저장할 때마다 사라짐)
-                if (name) fixed.push(f.daily ? { name: name, amount: amount, daily: true } : { name: name, amount: amount });
+                if (name) {
+                    const fe = f.daily ? { name: name, amount: amount, daily: true } : { name: name, amount: amount };
+                    if (f.note) fe.note = f.note;
+                    fixed.push(fe);
+                }
             });
             const labor = [];
             (costsConfig.labor || []).forEach((l, i) => {
@@ -2592,6 +2598,7 @@
                     if (Array.isArray(l.weekdays)) entry.weekdays = l.weekdays;
                     if (l.start) entry.start = l.start;
                     if (l.end) entry.end = l.end;
+                    if (l.note) entry.note = l.note;
                     labor.push(entry);
                 }
             });
