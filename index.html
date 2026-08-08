@@ -671,6 +671,36 @@
             line-height: 1.65;
         }
 
+        /* ---- 종료된 인건비 항목 (설정 화면 아래쪽) ---- */
+        .labor-ended-head {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px dashed #d5cec7;
+            font-size: 12.5px;
+            font-weight: bold;
+            color: #8a8078;
+        }
+
+        .labor-ended-note {
+            font-size: 11.5px;
+            color: #a09890;
+            line-height: 1.6;
+            margin: 4px 0 8px;
+        }
+
+        .fee-setting-row.labor-ended input {
+            color: #8a8078;
+        }
+
+        .labor-ended-tag {
+            font-size: 11.5px;
+            color: #fff;
+            background: #b0a89f;
+            border-radius: 8px;
+            padding: 2px 8px;
+            white-space: nowrap;
+        }
+
         /* ---- 기록(아카이브) 리스트 ---- */
         .history-row {
             padding: 10px 12px;
@@ -2730,16 +2760,32 @@
                         <input type="number" step="10000" min="0" id="cost-amt-${i}" value="${f.amount}" style="width:110px;"> <span class="unit">원/월</span>
                     </div>`;
             });
+            // 인건비: 현재 근무 중인 항목과 이미 끝난 항목(end가 지난 것)을 나눠서 그린다.
+            // 끝난 항목은 지우면 과거 달 결산에서 그 인건비가 통째로 빠져 과거 순익이 좋게 나오므로 남겨두되,
+            // 지금 운영비와 헷갈리지 않게 아래쪽에 흐리게 따로 모아둔다.
+            const today = todayStr();
+            const isEnded = l => !!(l.end && l.end < today);
+            let activeHtml = '', endedHtml = '';
             (costsConfig.labor || []).forEach((l, i) => {
-                html += `
-                    <div class="fee-setting-row" style="background:#faf7f5;">
+                const ended = isEnded(l);
+                const row = `
+                    <div class="fee-setting-row${ended ? ' labor-ended' : ''}" style="background:${ended ? '#f4f2f0' : '#faf7f5'};">
                         <input type="text" id="labor-name-${i}" value="${l.name}" style="flex:1; min-width:150px; text-align:left;">
                         <input type="number" step="500" min="0" id="labor-hourly-${i}" value="${l.hourly}" style="width:75px;" onchange="renderProfitCosts()"> <span class="unit" style="width:34px;">원</span>
                         <input type="number" step="0.5" min="0" id="labor-hours-${i}" value="${l.hours}" style="width:55px;" onchange="renderProfitCosts()"> <span class="unit" style="width:44px;">시간/일</span>
                         <input type="number" step="1" min="0" max="7" id="labor-days-${i}" value="${l.days}" style="width:50px;" onchange="renderProfitCosts()"> <span class="unit" style="width:40px;">일/주</span>
-                        <span style="color:#8a4a1f; font-weight:bold; font-size:12px; white-space:nowrap;">≈ ${laborMonthly(l).toLocaleString()}원/월</span>
+                        ${ended
+                            ? `<span class="labor-ended-tag">~${l.end.substring(5).replace('-', '/')} 종료</span>`
+                            : `<span style="color:#8a4a1f; font-weight:bold; font-size:12px; white-space:nowrap;">≈ ${laborMonthly(l).toLocaleString()}원/월</span>`}
                     </div>`;
+                if (ended) endedHtml += row; else activeHtml += row;
             });
+            html += activeHtml;
+            if (endedHtml) {
+                html += `<div class="labor-ended-head">지난 인건비 (지금은 안 나가는 항목)</div>
+                    <div class="labor-ended-note">이번 달 운영비에는 안 잡힙니다. 기록 탭에서 그 시기의 달을 볼 때만 결산에 들어갑니다 — 과거 손익을 정확하게 남겨두려고 보관하는 항목이니 지우지 마세요.</div>`
+                    + endedHtml;
+            }
             box.innerHTML = html;
         }
 
