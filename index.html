@@ -1933,7 +1933,7 @@
             const ym = y + '-' + String(m + 1).padStart(2, '0');
             box.innerHTML = `<div class="cal-pl-loading">${m + 1}월 결산 계산 중…</div>`;
 
-            await Promise.all([loadFees(), loadMenuCosts(), loadCosts()]);
+            await Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]);
             const mn = await calcMonthNet(ym);
             if (token !== _plToken) return;   // 그 사이 달을 또 넘겼으면 버림
             if (!mn.days) { box.innerHTML = ''; return; }
@@ -1946,7 +1946,7 @@
             const items = [];
             (costsConfig.fixed || []).forEach(f => {
                 const a = fixedAmountFor(f, ym);
-                if (a.amt) items.push({ name: f.name, amt: a.amt, est: a.est });
+                if (a.amt) items.push({ name: f.name, amt: a.amt, est: a.est, actualDays: a.actualDays });
             });
             (costsConfig.labor || []).forEach(l => {
                 const amt = laborMonthly(l, ym);
@@ -2695,9 +2695,31 @@
             }, 0);
         }
 
-        // 고정비의 해당 월 금액. varies:true 항목은 monthly["YYYY-MM"]에 확정 납부액이 있으면 그걸 쓰고,
-        // 없으면 amount(현재 추정치)를 쓰되 est=true로 표시해 결산표에서 '추정'으로 구분한다.
+        // 배민 광고 로그(사장님이 주기적으로 전달하는 실비)에서 해당 월 지출 합계를 뽑는다.
+        let bmAdLog = null;
+        async function loadBmAdLog() {
+            if (!bmAdLog) bmAdLog = (await loadJson('./processed/bm_ad_log.json')) || { daily: [] };
+            return bmAdLog;
+        }
+
+        function bmAdSpendFor(ym) {
+            if (!bmAdLog || !bmAdLog.daily) return null;
+            let amt = 0, days = 0;
+            bmAdLog.daily.forEach(d => {
+                if (d.date && d.date.substring(0, 7) === ym) { amt += d.spend || 0; days++; }
+            });
+            return days ? { amt: amt, days: days } : null;
+        }
+
+        // 고정비의 해당 월 금액. 우선순위:
+        //   1) source:"bm_ad_log" → 광고 로그의 그 달 실비 합계 (수기 입력 불필요)
+        //   2) monthly["YYYY-MM"] → 사장님이 알려준 그 달 확정 납부액 (관리비·가스비)
+        //   3) amount → 현재 금액으로 추정. est=true로 표시해 결산표에서 '추정'으로 구분한다.
         function fixedAmountFor(f, ym) {
+            if (ym && f.source === 'bm_ad_log') {
+                const s = bmAdSpendFor(ym);
+                if (s) return { amt: s.amt, est: false, actualDays: s.days };
+            }
             if (ym && f.monthly && f.monthly[ym] != null) return { amt: f.monthly[ym], est: false };
             return { amt: f.amount || 0, est: !!f.varies };
         }
