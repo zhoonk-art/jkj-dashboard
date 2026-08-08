@@ -664,6 +664,14 @@
             padding: 1px 5px;
         }
 
+        .pl-actual {
+            font-size: 10.5px;
+            color: #fff;
+            background: #6f9e6a;
+            border-radius: 7px;
+            padding: 1px 5px;
+        }
+
         .cal-pl-note {
             margin-top: 10px;
             font-size: 11.5px;
@@ -1967,7 +1975,12 @@
                     ${row('플랫폼 수수료', fee, '−', 'pl-minus')}
                     ${row('실수령액', mn.net, '', 'pl-sub')}
                     ${row('재료비', mn.mat, '−', 'pl-minus')}
-                    ${items.map(i => row(i.name + (i.est ? ' <span class="pl-est">추정</span>' : ''), i.amt, '−', 'pl-minus')).join('')}
+                    ${items.map(i => {
+                        let tag = '';
+                        if (i.est) tag = ' <span class="pl-est">추정</span>';
+                        else if (i.actualDays) tag = ` <span class="pl-actual">실비 ${i.actualDays}일치</span>`;
+                        return row(i.name + tag, i.amt, '−', 'pl-minus');
+                    }).join('')}
                     ${row('손에 남은 돈 (세전)', profit, profit >= 0 ? '+' : '', profit >= 0 ? 'pl-total' : 'pl-total pl-loss')}
                 </table>
                 <div class="cal-pl-note">
@@ -1975,6 +1988,7 @@
                     운영비 합계 ${F(opTotal)}원 · 세금(부가세·소득세) 내기 전 기준입니다.
                     ${isCur ? '<br><b>아직 이 달이 끝나지 않았습니다.</b> 매출은 오늘까지인데 월세·인건비는 한 달 전액이라 손익이 실제보다 나쁘게 보입니다. 월말에 정확해집니다.' : ''}
                     ${anyEst ? '<br>· <span class="pl-est">추정</span> 표시는 실제 납부액이 아직 입력되지 않아 최근 금액으로 계산한 항목입니다.' : ''}
+                    ${items.some(i => i.actualDays) ? '<br>· <span class="pl-actual">실비</span> 표시는 배민 광고 리포트에 기록된 실제 지출을 그대로 합산한 값입니다.' : ''}
                 </div>
             </div>`;
             box.innerHTML = html;
