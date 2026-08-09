@@ -627,6 +627,22 @@
             padding-left: 12px;
         }
 
+        .cal-pl-table .pl-pct {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            padding-left: 14px;
+            width: 1%;
+            color: #9a8f85;
+            font-size: 12.5px;
+        }
+
+        .cal-pl-table .pl-colhead td {
+            font-size: 11px;
+            color: #a89e95;
+            padding-bottom: 2px;
+        }
+
         .cal-pl-table .pl-head td {
             font-weight: bold;
             font-size: 14.5px;
@@ -1964,14 +1980,18 @@
             const profit = mn.net - mn.mat - opTotal;
             const anyEst = items.some(i => i.est);
 
-            const row = (label, val, sign, cls) => `<tr class="${cls || ''}">
+            // 비중(%) = 매출액 대비. 이 돈이 매출의 몇 %를 가져가는지 한눈에 보기 위한 열.
+            const pct = v => mn.gross > 0 ? (v / mn.gross * 100).toFixed(1) + '%' : '—';
+            const row = (label, val, sign, cls, showPct) => `<tr class="${cls || ''}">
                 <td class="pl-label">${label}</td>
-                <td class="pl-val">${sign || ''}${F(val)}</td></tr>`;
+                <td class="pl-val">${sign || ''}${F(val)}</td>
+                <td class="pl-pct">${showPct === false ? '' : pct(val)}</td></tr>`;
 
             let html = `<div class="cal-pl">
                 <div class="cal-pl-title">${y}년 ${m + 1}월 결산${isCur ? ' <span class="pl-badge">진행 중</span>' : ''}</div>
                 <table class="cal-pl-table">
-                    ${row('매출액', mn.gross, '', 'pl-head')}
+                    <tr class="pl-colhead"><td></td><td class="pl-val">금액</td><td class="pl-pct">매출 대비</td></tr>
+                    ${row('매출액', mn.gross, '', 'pl-head', false)}
                     ${row('플랫폼 수수료', fee, '−', 'pl-minus')}
                     ${row('실수령액', mn.net, '', 'pl-sub')}
                     ${row('재료비', mn.mat, '−', 'pl-minus')}
@@ -2443,7 +2463,11 @@
             const mc = menuCosts;
             const menus = order.menus || order.items || [];
             const SZ = /(반마리|한마리|두마리)/;
-            const sizeOpt = menus.find(m => m.is_option && SZ.test(m.name));
+            // 사이즈 지정 줄. 보통은 옵션("└ 닭 한마리")이지만, 네이버주문은 옵션이 일반 항목으로
+            // 들어와서("한마리(2인)") 옵션만 보면 사이즈를 놓치고 전부 반마리로 계산되어 버린다.
+            const SZ_LINE = /^\s*(반마리|한마리|두마리)/;
+            const sizeOpt = menus.find(m => m.is_option && SZ.test(m.name))
+                || menus.find(m => !m.is_option && SZ_LINE.test(m.name));
             const optSize = sizeOpt ? sizeOpt.name.match(SZ)[1] : null;
             const noMu = menus.some(m => m.is_option && /무.*빼|빼.*무/.test(m.name));
             const flavorNames = menus.filter(m => m.is_option && /매콤|달콤|후라이드/.test(m.name)).map(m => m.name);
@@ -2472,13 +2496,15 @@
                     cost += sideDrinkCost(name) * qty; // 유료 추가 옵션(음료/사이드)
                     return;
                 }
-                if (/다음에|주세요|빼주|리뷰/.test(name)) return;
+                if (/다음에|주세요|빼주|리뷰|껍질/.test(name)) return;
+                if (SZ_LINE.test(name)) return;   // "한마리(2인)" 같은 사이즈 지정 줄 자체는 메뉴가 아님
 
                 const banban = /반\s*\/\s*반/.test(name);
                 const nameSize = name.match(SZ);
                 const size = nameSize ? nameSize[1] : optSize;
                 const hasShrimp = /새우/.test(name);
-                const hasChicken = /닭|후라이드|양념/.test(name) && (size || banban);
+                // "달콤양념 소스"처럼 이름에 '양념'이 들어간 소스·시즈닝이 닭으로 잡히면 안 됨
+                const hasChicken = /닭|후라이드|양념/.test(name) && !/소스|시즈닝|토핑/.test(name) && (size || banban);
 
                 if (hasChicken) {
                     chickenMenus += qty;
