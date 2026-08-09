@@ -2377,10 +2377,18 @@
             const shrimpUnit = (r['새우 큰박스(288마리)'] || 0) / 288;
             mc.shrimp = { '6p': R(shrimpUnit * 6), '12p': R(shrimpUnit * 12), '24p': R(shrimpUnit * 24) };
             mc.per_order = {
-                '식용유': R((2 * (r['식용유 1통'] || 0) + (r['폐유 처리'] || 0)) / 100),
                 '젓가락': r['젓가락'] || 0,
                 '비닐': r['비닐'] || 0
             };
+            // 기름: 건당이 아니라 '튀긴 닭 kg당'으로 배분한다 (두마리 주문은 반마리의 4배를 튀기므로).
+            // 1회 교체 순비용 = 새 기름 매입 − 폐유 판매 수입(폐유는 지출이 아니라 수입).
+            const oil = mc.oil || {};
+            const tubs = oil.tubs_per_change || 2;
+            const wasteTubs = tubs * (typeof oil.waste_recovery_rate === 'number' ? oil.waste_recovery_rate : 0.8);
+            mc.oil_buy = R(tubs * (r['식용유 1통'] || 0));
+            mc.oil_sell = R(wasteTubs * (r['폐유 판매 1통'] || 0));
+            mc.oil_per_change = mc.oil_buy - mc.oil_sell;
+            mc.oil_per_kg = R(mc.oil_per_change / (oil.kg_per_change || 28));
             mc.per_menu = { '치킨무': R((r['치킨무 50개'] || 0) / 50) };
             mc.sides = mc.sides || {};
             mc.sides['즉석밥'] = R((r['즉석밥 24개'] || 0) / 24);
@@ -2414,6 +2422,9 @@
             return 0; // 원가 미등록 항목 (시즈닝 등)
         }
 
+        // 사이즈별 생닭 사용량(kg) — 닭 단가·기름 배분에 공통으로 쓰는 계수 (2026-07-18 실측 확정)
+        const CHICKEN_KG = { '반마리': 0.35, '한마리': 0.70, '두마리': 1.4 };
+
         // 주문 1건의 재료비 추정
         // 닭 kg단가를 날짜 기준으로 조회 (menu_costs.chicken_price_history — 입고 배치 단가 반영)
         function chickenBaseOn(sz, dateStr) {
@@ -2423,8 +2434,7 @@
             let perKg = hist[0].per_kg;
             hist.forEach(h => { if (h.from <= dateStr) perKg = h.per_kg; });
             const powder = ((mc.raw && mc.raw['파우더 5kg']) || 0) / 5 * 0.13;
-            const g = { '반마리': 0.35, '한마리': 0.70, '두마리': 1.4 };
-            return Math.round((perKg + powder) * (g[sz] || 0));
+            return Math.round((perKg + powder) * (CHICKEN_KG[sz] || 0));
         }
 
         function orderCost(order, costDate) {
@@ -2474,6 +2484,7 @@
                     chickenMenus += qty;
                     const sz = size || '반마리';
                     cost += chickenBaseOn(sz, costDate) * qty; // 날짜별 닭 단가 (costDate 없으면 현재가)
+                    cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)) * qty; // 기름 (튀긴 닭 kg 비례)
 
                     // 박스
                     if (banban) cost += (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) * qty;
@@ -2513,9 +2524,9 @@
 
             // 메뉴당 치킨무 서비스
             if (!noMu) cost += (mc.per_menu['치킨무'] || 0) * chickenMenus;
-            // 주문당 공통 (기름/젓가락/비닐)
+            // 주문당 공통 (젓가락/비닐) — 기름은 위에서 닭 kg에 비례해 이미 반영됨
             if (chickenMenus > 0) {
-                cost += (mc.per_order['식용유'] || 0) + (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
+                cost += (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
             }
             return cost;
         }
@@ -2556,7 +2567,9 @@
                     소스(1국자): 양념 ${menuCosts.sauce_per_half['달콤양념']} · 매콤간장 ${menuCosts.sauce_per_half['매콤간장']}원<br>
                     박스(겉+속): 반 ${menuCosts.box['반마리']} · 한 ${menuCosts.box['한마리']} · 반/반 ${menuCosts.box['한마리 반/반']} · 두 ${menuCosts.box['두마리']}원<br>
                     새우: 6p ${menuCosts.shrimp['6p'].toLocaleString()} · 12p ${menuCosts.shrimp['12p'].toLocaleString()} · 24p ${menuCosts.shrimp['24p'].toLocaleString()}원<br>
-                    기름(건당): ${menuCosts.per_order['식용유'].toLocaleString()}원 · 치킨무: ${menuCosts.per_menu['치킨무']}원<br>
+                    기름: 닭 1kg당 ${(menuCosts.oil_per_kg || 0).toLocaleString()}원 (반 ${Math.round((menuCosts.oil_per_kg || 0) * 0.35).toLocaleString()} · 한 ${Math.round((menuCosts.oil_per_kg || 0) * 0.7).toLocaleString()} · 두 ${Math.round((menuCosts.oil_per_kg || 0) * 1.4).toLocaleString()}원)
+                    — 1회 교체 ${(menuCosts.oil_buy || 0).toLocaleString()}원 매입 − 폐유 판매 ${(menuCosts.oil_sell || 0).toLocaleString()}원 = ${(menuCosts.oil_per_change || 0).toLocaleString()}원 ÷ 닭 ${((menuCosts.oil || {}).kg_per_change || 28)}kg<br>
+                    치킨무: ${menuCosts.per_menu['치킨무']}원<br>
                     즉석밥: ${menuCosts.sides['즉석밥'].toLocaleString()}원 · 샐러드: ${menuCosts.sides['양배추샐러드']}원 · 떡사리: 40g ${menuCosts.sides['떡사리40g']} / 80g ${menuCosts.sides['떡사리80g']}원
                 </div>`;
             box.innerHTML = html;
@@ -2608,6 +2621,7 @@
             if (hasChicken && (sizeM || banban)) {
                 const sz = sizeM ? sizeM[1] : '한마리';
                 cost += mc.chicken_base[sz] || 0;
+                cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)); // 기름 (튀긴 닭 kg 비례)
                 cost += banban ? (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) : (mc.box[sz] || 0);
                 const halves = sz === '두마리' ? 4 : sz === '한마리' ? 2 : banban ? 2 : 1;
                 cost += (mc.sauce_per_half['달콤양념'] || 0) * halves;
@@ -2626,7 +2640,7 @@
             if (menuCount === 0 && !tteok) return null;
 
             cost += (mc.per_menu['치킨무'] || 0) * Math.max(1, menuCount);
-            cost += (mc.per_order['식용유'] || 0) + (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
+            cost += (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0); // 기름은 위에서 닭 kg 비례로 반영
             return cost;
         }
 
