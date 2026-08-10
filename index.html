@@ -680,6 +680,12 @@
             padding: 1px 5px;
         }
 
+        .pl-inline-note {
+            font-size: 10.5px;
+            color: #a89e95;
+            font-weight: normal;
+        }
+
         .pl-actual {
             font-size: 10.5px;
             color: #fff;
@@ -1963,7 +1969,8 @@
             if (!mn.days) { box.innerHTML = ''; return; }
 
             const F = n => Math.round(n).toLocaleString();
-            const fee = mn.gross - mn.net;
+            const fee = mn.gross - mn.net;      // 정산에서 떼인 전액 (매출연동 광고비 포함)
+            const adv = mn.adv || 0;            // 그중 매출연동 광고비(쿠팡)
             const isCur = ym === todayStr().substring(0, 7);
 
             // 지출 항목 모으기 (고정비 → 인건비 순)
@@ -1979,6 +1986,9 @@
             const opTotal = items.reduce((s, i) => s + i.amt, 0);
             const profit = mn.net - mn.mat - opTotal;
             const anyEst = items.some(i => i.est);
+            // 광고비는 채널마다 청구 방식이 달라 표에서 떨어져 있으므로(쿠팡=정산 차감, 배민=별도 청구) 합계를 따로 보여준다
+            const bmAd = items.filter(i => /광고/.test(i.name)).reduce((s, i) => s + i.amt, 0);
+            const adTotal = adv + bmAd;
 
             // 비중(%) = 매출액 대비. 이 돈이 매출의 몇 %를 가져가는지 한눈에 보기 위한 열.
             const pct = v => mn.gross > 0 ? (v / mn.gross * 100).toFixed(1) + '%' : '—';
@@ -1992,7 +2002,8 @@
                 <table class="cal-pl-table">
                     <tr class="pl-colhead"><td></td><td class="pl-val">금액</td><td class="pl-pct">매출 대비</td></tr>
                     ${row('매출액', mn.gross, '', 'pl-head', false)}
-                    ${row('플랫폼 수수료', fee, '−', 'pl-minus')}
+                    ${row('플랫폼 수수료 (중개·결제·배달비)', fee - adv, '−', 'pl-minus')}
+                    ${adv ? row('쿠팡 광고비 <span class="pl-inline-note">매출연동, 정산에서 차감</span>', adv, '−', 'pl-minus') : ''}
                     ${row('실수령액', mn.net, '', 'pl-sub')}
                     ${row('재료비', mn.mat, '−', 'pl-minus')}
                     ${items.map(i => {
@@ -2006,6 +2017,7 @@
                 <div class="cal-pl-note">
                     영업 ${mn.days}일 · 하루 평균 매출 ${F(mn.gross / mn.days)}원 · 하루 평균 순익 ${F(profit / mn.days)}원<br>
                     운영비 합계 ${F(opTotal)}원 · 세금(부가세·소득세) 내기 전 기준입니다.
+                    ${adTotal ? `<br>· <b>광고비 총합 ${F(adTotal)}원 (매출의 ${pct(adTotal).replace('%', '')}%)</b> — 쿠팡 ${F(adv)}원(정산 차감) + 배민 ${F(bmAd)}원(별도 청구)` : ''}
                     ${isCur ? '<br><b>아직 이 달이 끝나지 않았습니다.</b> 매출은 오늘까지인데 월세·인건비는 한 달 전액이라 손익이 실제보다 나쁘게 보입니다. 월말에 정확해집니다.' : ''}
                     ${anyEst ? '<br>· <span class="pl-est">추정</span> 표시는 실제 납부액이 아직 입력되지 않아 최근 금액으로 계산한 항목입니다.' : ''}
                     ${items.some(i => i.actualDays) ? '<br>· <span class="pl-actual">실비</span> 표시는 배민 광고 리포트에 기록된 실제 지출을 그대로 합산한 값입니다.' : ''}
@@ -2212,19 +2224,25 @@
             return feesConfig;
         }
 
-        function feeFor(channel) {
+        function feeFor(channel, dateStr) {
             const ch = (feesConfig && feesConfig.channels && feesConfig.channels[channel]) || null;
+            // 매출연동 광고율은 바뀐 이력이 있으면 그 날짜에 적용되던 값을 쓴다
+            // (쿠팡 6%→5%→6%. 이걸 안 하면 과거 달 수수료·광고비가 현재 요율로 잘못 계산됨)
+            let ad = ch ? (ch.ad_pct || 0) : 0;
+            if (ch && dateStr && Array.isArray(ch.ad_pct_history)) {
+                ch.ad_pct_history.forEach(h => { if (h.from <= dateStr) ad = h.pct; });
+            }
             return {
                 med: ch ? (ch.mediation_pct || 0) : 0,   // 중개이용료 %
                 pay: ch ? (ch.payment_pct || 0) : 0,     // 결제정산수수료 %
                 del: ch ? (ch.delivery_fixed || 0) : 0,  // 건당 배달비 원
-                ad: ch ? (ch.ad_pct || 0) : 0            // 매출연동 광고비 %
+                ad: ad                                   // 매출연동 광고비 %
             };
         }
 
         // 주문 1건의 수수료 분해: 중개 + 결제 + 배달비 + 광고 + 부가세(합의 10%)
-        function orderNet(order) {
-            const f = feeFor(order.channel);
+        function orderNet(order, dateStr) {
+            const f = feeFor(order.channel, dateStr);
             const med = Math.round(order.amount * f.med / 100);
             const pay = Math.round(order.amount * f.pay / 100);
             const del = f.del;
@@ -2802,8 +2820,12 @@
             // 지난 달은 더 이상 바뀌지 않으므로 캐시 (달력에서 달을 넘길 때마다 재조회하지 않게)
             if (ym !== curYm && _monthNetCache[ym]) return _monthNetCache[ym];
             const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
-            let gross = 0, net = 0, mat = 0, days = 0;
+            let gross = 0, net = 0, mat = 0, days = 0, adv = 0;
             const monthDays = idx.filter(x => x.date.substring(0, 7) === ym);
+
+            // 매출연동 광고비(쿠팡 등)는 정산에서 수수료와 함께 떼가므로 net에 이미 반영돼 있다.
+            // 결산표에서 따로 보여주려고 그 몫만 부가세 포함으로 별도 집계한다.
+            const advOf = (o, dateStr) => Math.round(orderNet(o, dateStr).ad * 1.1);
 
             for (const d of monthDays) {
                 const ymd = d.date.replace(/-/g, '');
@@ -2812,16 +2834,26 @@
                 const act = od.orders.filter(o => !o.cancelled && !o.prepaid);
                 if (!act.length) continue;
                 days++;
-                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o, d.date); });
+                act.forEach(o => {
+                    gross += o.amount;
+                    net += orderNet(o, d.date).net;
+                    mat += orderCost(o, d.date);
+                    adv += advOf(o, d.date);
+                });
             }
 
             const t = await loadJson('./processed/orders_latest.json');
             if (t && t.date && t.date.substring(0, 7) === ym && t.orders && !monthDays.some(x => x.date === t.date)) {
                 const act = t.orders.filter(o => !o.cancelled && !o.prepaid);
                 if (act.length > 0) days++;
-                act.forEach(o => { gross += o.amount; net += orderNet(o).net; mat += orderCost(o, t.date); });
+                act.forEach(o => {
+                    gross += o.amount;
+                    net += orderNet(o, t.date).net;
+                    mat += orderCost(o, t.date);
+                    adv += advOf(o, t.date);
+                });
             }
-            const r = { gross: gross, net: net, mat: mat, days: days };
+            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv };
             if (ym !== curYm) _monthNetCache[ym] = r;
             return r;
         }
