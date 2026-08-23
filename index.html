@@ -3060,57 +3060,6 @@
         // 최근 데이터에 비중을 더 주는 지수 가중 평균(반감기 4주: 4주 전 데이터는 비중 절반, 8주 전은 1/4)으로
         // 매출 흐름이 바뀌면 예측이 빨리 따라오게 함. 권장량 = 가중 평균 × 1.1 (여유 10%), 0.5kg 올림.
         // 납품: 도축업체가 주말 휴무라 금요일에 금·토·일 3일치를 한 번에 수령, 토·일은 납품 없음.
-        // ===== 닭 재고 원장 (입고/실사 기록, 매장 PC 전용 저장) =====
-        async function saveChickenCfg(cfg) {
-            const resp = await fetch('./api/save-chicken', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
-            });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        }
-
-        async function addChickenEntry(kind) {
-            const date = document.getElementById('chkDate').value;
-            const kg = parseFloat(document.getElementById('chkKg').value);
-            const msg = document.getElementById('chkMsg');
-            if (!date || isNaN(kg) || kg < 0) { msg.textContent = '날짜와 kg를 입력하세요'; msg.style.color = '#e03131'; return; }
-            try {
-                const cfg = (await loadJson('./processed/chicken_ledger.json')) || {};
-                if (!cfg.entries) cfg.entries = [];
-                const e = { date: date };
-                e[kind] = kg;
-                cfg.entries.push(e);
-                await saveChickenCfg(cfg);
-                renderMarketing();
-            } catch (err) {
-                msg.textContent = '저장 실패: ' + err.message; msg.style.color = '#e03131';
-            }
-        }
-
-        // 현재 재고 직접 수정 → 오늘 날짜 실사 기록으로 저장 (장부가 이 값으로 보정됨)
-        async function setChickenStock(curKg) {
-            const v = prompt('현재 실제 닭 재고(kg)를 입력하세요', curKg != null ? curKg : '');
-            if (v === null) return;
-            const kg = parseFloat(v);
-            if (isNaN(kg) || kg < 0) { alert('숫자(kg)로 입력해주세요'); return; }
-            try {
-                const cfg = (await loadJson('./processed/chicken_ledger.json')) || {};
-                if (!cfg.entries) cfg.entries = [];
-                cfg.entries.push({ date: todayStr(), stock_check_kg: kg });
-                await saveChickenCfg(cfg);
-                renderMarketing();
-            } catch (err) { alert('저장 실패: ' + err.message); }
-        }
-
-        async function delChickenEntry(idx) {
-            try {
-                const cfg = (await loadJson('./processed/chicken_ledger.json')) || {};
-                if (!cfg.entries || idx < 0 || idx >= cfg.entries.length) return;
-                cfg.entries.splice(idx, 1);
-                await saveChickenCfg(cfg);
-                renderMarketing();
-            } catch (err) { alert('삭제 실패: ' + err.message); }
-        }
-
         // 오늘 닭 사용량 실시간 추정 (아카이브 전) — archive_and_summarize.ps1의 파싱 규칙과 동일
         function estimateChickenKg(orders) {
             const G = { '반마리': 350, '한마리': 700, '두마리': 1400 }; // 생닭 기준 (사용자 확정 2026-07-18)
@@ -3213,42 +3162,9 @@
                 groupByDate[o.date].names.push(`${o.name} ${o.qty}개`);
             });
 
-            // ===== 재고 원장: 입고 기록 + 사용량으로 장부 재고 계산 =====
-            const ledger = await loadJson('./processed/chicken_ledger.json');
             const latest = await loadJson('./processed/orders_latest.json');
             const tIso0 = todayStr();
             const groupKgOf0 = iso => groupByDate[iso] ? groupByDate[iso].kg : 0;
-            // 오늘 사용량: 아카이브 전이면 실시간 주문에서 추정
-            const todayUsedBase = (cd[tIso0] != null) ? cd[tIso0]
-                : ((latest && latest.date === tIso0 && latest.orders) ? estimateChickenKg(latest.orders) : 0);
-
-            let invInfo = null;
-            if (ledger && ledger.entries && ledger.entries.length) {
-                const byDate = {};
-                ledger.entries.forEach(e => {
-                    if (!byDate[e.date]) byDate[e.date] = { recv: 0, extra: 0, check: null };
-                    if (typeof e.received_kg === 'number') byDate[e.date].recv += e.received_kg;
-                    if (typeof e.used_kg === 'number') byDate[e.date].extra += e.used_kg; // 서비스·시식·폐기 등 매출 없는 소진
-                    if (typeof e.stock_check_kg === 'number') byDate[e.date].check = e.stock_check_kg;
-                });
-                const first = Object.keys(byDate).sort()[0];
-                let inv = 0;
-                const losses = [];
-                for (let d = new Date(first + 'T00:00:00'); ; d.setDate(d.getDate() + 1)) {
-                    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                    if (iso > tIso0) break;
-                    const bd = byDate[iso];
-                    inv += bd ? bd.recv : 0;
-                    const used = ((iso === tIso0) ? todayUsedBase : (cd[iso] != null ? cd[iso] : 0)) + groupKgOf0(iso) + (bd ? bd.extra : 0);
-                    inv -= used;
-                    if (bd && bd.check != null) {
-                        const diff = inv - bd.check; // +면 장부보다 실물이 적음 = 로스
-                        if (Math.abs(diff) >= 0.3) losses.push({ date: iso, diff });
-                        inv = bd.check;
-                    }
-                }
-                invInfo = { inv: inv, losses: losses };
-            }
 
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
@@ -3277,12 +3193,11 @@
                     else if (e0 && e0.holiday) note0 = ` ⚠️${e0.label} — 여유 있게!`;
                     if (note0 && evNote.indexOf(note0) < 0) evNote += note0;
                 });
-                const inv0 = invInfo ? invInfo.inv : 0;
-                const orderKg = Math.max(0, Math.ceil((needKg - inv0) / 10) * 10);
+                const orderKg = Math.max(0, Math.ceil(needKg / 10) * 10);
                 orderBanner = `<div style="font-size:15px; font-weight:800; color:#fff; background:linear-gradient(135deg,#e8590c,#c9480a); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
-                    🛒 오늘 밤 주문 추천: ${orderKg > 0 ? orderKg + 'kg' : '주문 불필요 (재고로 충분)'}
-                    <div style="font-weight:500; font-size:12.5px; opacity:0.95; margin-top:3px;">필요 ${F(needKg)}kg (${needParts.join(' + ')}) − 장부 재고 ${F(inv0)}kg → 10kg 단위 올림${evNote}</div>
-                    ${invInfo ? '' : '<div style="font-size:12px; font-weight:500; margin-top:3px; opacity:0.85;">※ 입고 기록이 아직 없어 재고 0으로 가정 — 아래 장부에 입고량을 입력하면 재고가 반영됩니다</div>'}
+                    🛒 오늘 밤 주문 추천: ${orderKg}kg
+                    <div style="font-weight:500; font-size:12.5px; opacity:0.95; margin-top:3px;">필요 ${F(needKg)}kg (${needParts.join(' + ')}) → 10kg 단위 올림${evNote}</div>
+                    <div style="font-size:12px; font-weight:500; margin-top:3px; opacity:0.85;">※ 남은 재고는 직접 확인하고 빼서 주문하세요</div>
                 </div>`;
             } else {
                 orderBanner = `<div style="font-size:13px; color:#666; background:#f5f2f0; border-radius:8px; padding:8px 12px; margin-bottom:8px;">🛒 오늘 밤은 닭 주문이 없는 날입니다 — 다음 주문: 월요일 밤 (화요일 아침 납품)</div>`;
@@ -3291,11 +3206,10 @@
                 const nxIso = isoOf(nx);
                 const nxGroup = groupKgOf0(nxIso);
                 if (nxGroup > 0 && nowDow === 0) {
-                    const inv0 = invInfo ? invInfo.inv : 0;
-                    const needExtra = Math.max(0, Math.ceil((nxGroup - inv0) / 10) * 10);
+                    const needExtra = Math.max(0, Math.ceil(nxGroup / 10) * 10);
                     orderBanner = `<div style="font-size:14px; font-weight:800; color:#fff; background:linear-gradient(135deg,#c92a2a,#a61e1e); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
                         ⚠️ 내일(월 휴무) 단체 납품 ${F(nxGroup)}kg — ${(groupByDate[nxIso] ? groupByDate[nxIso].names.join(', ') : '')}
-                        <div style="font-weight:500; font-size:12.5px; opacity:0.95; margin-top:3px;">오늘 밤 도축업체에 별도 주문 필요! 장부 재고 ${F(inv0)}kg 감안 시 ${needExtra > 0 ? needExtra + 'kg 주문 추천' : '재고로 충당 가능'} (월요일 아침 납품 가능 여부 업체 확인)</div>
+                        <div style="font-weight:500; font-size:12.5px; opacity:0.95; margin-top:3px;">오늘 밤 도축업체에 별도 주문 필요! ${needExtra}kg 주문 추천 (월요일 아침 납품 가능 여부 업체 확인)</div>
                     </div>` + orderBanner;
                 }
             }
@@ -3421,60 +3335,6 @@
             const upcomingLine = upcoming.length
                 ? `<div style="font-size:12.5px; color:#777; margin-top:8px;">📅 다가오는 이벤트: ${upcoming.join(' · ')}</div>` : '';
 
-            // ===== 재고 장부 UI =====
-            let ledgerHtml = `<div class="comp-section-title" style="margin-top:14px;">📦 닭 재고 장부</div>`;
-            {
-                const curInv = invInfo ? invInfo.inv : 0;
-                const invColor = curInv < 0 ? '#e03131' : '#2b8a3e';
-                const editBtn = IS_LOCAL
-                    ? ` <button onclick="setChickenStock(${curInv.toFixed(1)})" style="border:1px solid #ddd; background:#fff; color:#1971c2; border-radius:6px; padding:2px 10px; font-size:11.5px; cursor:pointer; vertical-align:2px;">✏️ 재고 수정</button>`
-                    : '';
-                // 오늘 사용량 전용 줄: 원격(모바일)에서도 항상 보이게 별도 표기 (판매 + 단체 + 서비스·시식)
-                const todayExtra = (((ledger && ledger.entries) || []).filter(e => e.date === tIso0 && typeof e.used_kg === 'number')
-                    .reduce((s, e) => s + e.used_kg, 0));
-                const todayGroup = groupKgOf0(tIso0);
-                const todayTotalUse = todayUsedBase + todayGroup + todayExtra;
-                const parts = [`판매 ${F(todayUsedBase)}`];
-                if (todayGroup > 0) parts.push(`단체 ${F(todayGroup)}`);
-                if (todayExtra > 0) parts.push(`서비스·시식 ${F(todayExtra)}`);
-                const useTag = cd[tIso0] != null ? '마감 확정' : (latest && latest.date === tIso0 ? '실시간 추정 · 10분마다 갱신' : '주문 데이터 대기 중');
-                ledgerHtml += `<div style="font-size:13px; margin-bottom:4px;">🍗 오늘 판매 사용량: <b style="font-size:16px;">${F(todayTotalUse)}kg</b> <span style="color:#888; font-size:12px;">(${parts.join(' + ')}kg · ${useTag})</span></div>`;
-                ledgerHtml += `<div style="font-size:13px; margin-bottom:4px;">현재 장부 재고: <b style="color:${invColor}; font-size:17px;">${F(curInv)}kg</b>${editBtn} <span style="color:#888; font-size:12px;">${invInfo ? '= 입고 누계 − 판매 사용량' : '(기록이 없어 0 가정 — 재고 수정을 누르면 지금 있는 닭부터 시작합니다)'}</span></div>`;
-            }
-            if (invInfo) {
-                if (invInfo.inv < 0) {
-                    ledgerHtml += `<div style="font-size:12.5px; color:#e03131; margin-bottom:4px;">⚠️ 장부 재고가 마이너스입니다 — 입고 기록이 빠졌거나 사용량이 과대 계산됐어요. 마감 때 실사 재고를 입력하면 보정됩니다.</div>`;
-                }
-                if (invInfo.losses.length) {
-                    ledgerHtml += `<div style="font-size:12.5px; color:#e8590c; margin-bottom:4px;">🔎 실사 보정 이력: ` +
-                        invInfo.losses.slice(-5).map(l => `${l.date.slice(5).replace('-', '/')} ${l.diff > 0 ? '로스 -' + F(l.diff) + 'kg' : '초과 +' + F(-l.diff) + 'kg'}`).join(' · ') +
-                        ` <span style="color:#999;">(로스 = 장부보다 실물이 적음: 폐기·서비스·기록 누락 등)</span></div>`;
-                }
-            } else {
-                ledgerHtml += `<div style="font-size:12.5px; color:#888; margin-bottom:4px;">아직 입고 기록이 없습니다. 닭이 들어온 날 아침 입고량(kg)을 저장하면 장부 재고가 자동 계산되고 주문 추천에 반영됩니다. 가끔 마감 때 실제 남은 닭 무게(실사)를 입력하면 장부와의 차이 = 로스가 보입니다.</div>`;
-            }
-            if (ledger && ledger.entries && ledger.entries.length) {
-                const ents = ledger.entries.map((e, i) => ({ e: e, i: i })).slice(-8).reverse();
-                ledgerHtml += `<div style="margin-bottom:4px;">` + ents.map(x => `
-                    <div style="font-size:12.5px; color:#555; display:flex; gap:10px; align-items:center; padding:2px 0;">
-                        <span style="color:#999;">${x.e.date}</span>
-                        <span>${typeof x.e.received_kg === 'number' ? '📥 입고 ' + x.e.received_kg + 'kg'
-                            : typeof x.e.used_kg === 'number' ? '🍗 소진 ' + x.e.used_kg + 'kg' + (x.e.memo ? ' (' + x.e.memo + ')' : '')
-                            : '📏 실사 ' + x.e.stock_check_kg + 'kg'}</span>
-                        ${IS_LOCAL ? `<button onclick="delChickenEntry(${x.i})" style="border:none; background:none; color:#c92a2a; cursor:pointer; font-size:11px; padding:0;">삭제</button>` : ''}
-                    </div>`).join('') + `</div>`;
-            }
-            if (IS_LOCAL) {
-                ledgerHtml += `<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px;">
-                    <input type="date" id="chkDate" value="${tIso0}" style="padding:5px 6px; border:1px solid #ddd; border-radius:6px; font-size:12.5px;">
-                    <input type="number" id="chkKg" step="0.5" min="0" placeholder="kg" style="width:75px; padding:5px 6px; border:1px solid #ddd; border-radius:6px; font-size:12.5px;">
-                    <button class="save-btn" style="padding:6px 12px; font-size:12px;" onclick="addChickenEntry('received_kg')">+ 입고 저장</button>
-                    <button class="save-btn" style="padding:6px 12px; font-size:12px; background:#1971c2;" onclick="addChickenEntry('stock_check_kg')">실사 재고 저장</button>
-                    <button class="save-btn" style="padding:6px 12px; font-size:12px; background:#868e96;" onclick="addChickenEntry('used_kg')">소진 저장 (서비스·시식)</button>
-                    <span id="chkMsg" style="font-size:12px;"></span>
-                </div>`;
-            }
-
             box.innerHTML = orderBanner + head + `
                 <div style="overflow-x:auto; margin-top:10px;">
                     <table class="heat-table" style="min-width:420px;">
@@ -3482,9 +3342,8 @@
                         ${rows}
                     </table>
                 </div>
-                ${ledgerHtml}
                 ${upcomingLine}
-                <p class="settings-note" style="margin-top:8px;">가중평균 = 최근 데이터에 비중을 더 준 평균 (4주 전 데이터는 비중 절반). 사용 예상 = 가중평균×1.1. 납품 필요 = 그날 아침 받는 양 (금요일 = 금·토·일 3일치, 월요일 휴무 기준). 밤 주문 = 그날 마감 때 넣을 주문의 10kg 단위 참고치(재고 미반영) — 실제 추천은 맨 위 배너가 장부 재고를 빼고 계산합니다. 복날·공휴일·단체 예약은 자동 반영됩니다.</p>`;
+                <p class="settings-note" style="margin-top:8px;">가중평균 = 최근 데이터에 비중을 더 준 평균 (4주 전 데이터는 비중 절반). 사용 예상 = 가중평균×1.1. 납품 필요 = 그날 아침 받는 양 (금요일 = 금·토·일 3일치, 월요일 휴무 기준). 복날·공휴일·단체 예약은 자동 반영됩니다.</p>`;
         }
 
         // 배민 클릭광고 최적가 탐색: bm_ad_log(입찰가 이력·광고 지출) × marketing_stats.bm_daily(일별 배민 매출) 조인
@@ -3553,9 +3412,10 @@
                 return { p, bizDays, cnt, revDay, settleDay, spendPerDay, roas, profitDay, ongoing: !p.end };
             });
             // 순이익/일 최고(🏆) + 매출/일 최고(📈) 구간 표시 — 매출(성장)과 순익을 함께 보고 판단
-            const best = rows.filter(r => r.profitDay != null && r.bizDays >= 3)
+            // bid 0 = 입찰가가 섞인 탐색 구간 — 비교 대상에서 제외
+            const best = rows.filter(r => r.profitDay != null && r.bizDays >= 3 && r.p.bid > 0)
                 .reduce((a, b) => (a == null || b.profitDay > a.profitDay) ? b : a, null);
-            const bestRev = rows.filter(r => r.bizDays >= 3)
+            const bestRev = rows.filter(r => r.bizDays >= 3 && r.p.bid > 0)
                 .reduce((a, b) => (a == null || b.revDay > a.revDay) ? b : a, null);
             const revGapPct = (best && bestRev && best !== bestRev && bestRev.revDay > 0)
                 ? Math.round((1 - best.revDay / bestRev.revDay) * 100) : 0;
@@ -3568,7 +3428,7 @@
                 <table class="heat-table" style="min-width:620px;">
                     <tr><th>입찰가</th><th>기간</th><th>영업일</th><th>주문/일</th><th>매출/일</th><th>정산/일</th><th>광고비/일</th><th>ROAS</th><th>순이익/일*</th></tr>
                     ${rows.map(r => `<tr style="${r.ongoing ? 'background:#fff8f0; font-weight:700;' : ''}">
-                        <td>${r.p.bid}원${r.ongoing ? ' <span style="color:#e8590c;">◀ 진행 중</span>' : ''}${best === r ? ' 🏆' : ''}${bestRev === r ? ' 📈' : ''}</td>
+                        <td>${r.p.bid > 0 ? r.p.bid + '원' : '<span style="color:#999;">혼합(탐색)</span>'}${r.ongoing ? ' <span style="color:#e8590c;">◀ 진행 중</span>' : ''}${best === r ? ' 🏆' : ''}${bestRev === r ? ' 📈' : ''}</td>
                         <td style="font-size:12px;">${r.p.start.slice(5).replace('-', '/')}~${(r.p.end || '').slice(5).replace('-', '/') || '현재'}</td>
                         <td>${r.bizDays}일</td>
                         <td>${r.bizDays ? (r.cnt / r.bizDays).toFixed(1) : '-'}건</td>
@@ -3583,150 +3443,151 @@
                 <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 정산액(수수료·부가세 차감) − 재료비(매출×${Math.round(matRate * 100)}%) − 광고비. 배민 채널(앱배달·가게배달·포장) 전체 기준이며 운영비(고정비)는 뺀 값이 아닙니다 — 입찰가끼리 비교하는 용도입니다. ROAS = 광고매출 ÷ 광고지출(배민 리포트 기준). <b>판단 기준은 순이익/일(🏆)과 매출/일(📈)을 함께</b> — 월매출 1억 목표라 매출 성장도 같이 감시하며, 노출수는 참고만 합니다(주문과 상관 낮음, 사장님 확정 7/25). 광고비가 '미입력'인 구간은 배민 광고 리포트의 일별 지출을 알려주시면 채워집니다. 계획: 225원 실험 판정(8/3) 후 50~100원씩 단계적으로 올리며 순이익·매출이 함께 꺾이는 꼭지점을 찾습니다.</p>`;
         }
 
-        async function renderMarketing() {
-            // 마케팅 어드바이저 브리핑
-            loadJson('./processed/marketing_advice.json').then(a => {
-                const box = document.getElementById('advisorBox');
-                if (!a || !a.headline) {
-                    box.innerHTML = '<div class="empty-note">아직 브리핑이 없습니다. 매주 화요일 10:30에 에이전트가 자동 분석합니다.</div>';
-                    return;
-                }
-                document.getElementById('advisorTitle').textContent = `🧠 마케팅 어드바이저 · ${a.generated || ''}`;
+        // 쿠팡이츠 매출연동 광고: fees.json ad_pct_history × marketing_stats.cp_daily 조인
+        async function renderCpAdLab(m) {
+            const box = document.getElementById('cpAdLabBox');
+            if (!box) return;
+            await loadFees();
+            const cp = feesConfig && feesConfig.channels && feesConfig.channels['쿠팡이츠'];
+            if (!cp) { box.innerHTML = '<div class="empty-note">쿠팡이츠 수수료 설정이 없습니다</div>'; return; }
+            const cpDaily = m.cp_daily || {};
+            const dates = Object.keys(cpDaily).sort();
+            if (!dates.length) { box.innerHTML = '<div class="empty-note">쿠팡 일별 데이터가 아직 없습니다 (22:30 아카이브 후 생성)</div>'; return; }
 
-                // insights/actions 스키마와 채널믹스형(action_items/channel_mix) 스키마를 모두 지원
-                const insights = a.insights || (a.channel_mix ? [
-                    { title: '채널 믹스', detail: a.channel_mix.key_insight || a.channel_mix.verdict || '' },
-                    { title: '매출 추이', detail: (a.sales_trend && a.sales_trend.reading) || '' },
-                    { title: '시간대/요일', detail: (a.time_daypart && (a.time_daypart.opportunities || [])[0]) || '' },
-                    { title: '리뷰', detail: (a.reviews && a.reviews.participation_trend && a.reviews.participation_trend.reading) || '' }
-                ].filter(x => x.detail) : []);
+            // 광고율 이력 -> 구간 만들기 (from일부터 다음 변경 전날까지)
+            const hist = (cp.ad_pct_history && cp.ad_pct_history.length)
+                ? cp.ad_pct_history.slice().sort((a, b) => a.from.localeCompare(b.from))
+                : [{ from: dates[0], pct: cp.ad_pct || 0 }];
+            const tIso = todayStr();
+            const segs = hist.map((h, i) => ({
+                pct: h.pct,
+                start: h.from < dates[0] ? dates[0] : h.from,
+                end: i + 1 < hist.length ? prevDayIso(hist[i + 1].from) : tIso
+            })).filter(s => s.end >= dates[0]);
 
-                const rawActions = a.actions || a.action_items || [];
-                const prMap = { 1: '상', 2: '상', 3: '중', 4: '하', 5: '하', '상': '상', '중': '중', '하': '하' };
-                const actions = rawActions.map(x => ({
-                    priority: prMap[x.priority] || '중',
-                    title: x.title,
-                    detail: x.detail
-                }));
-
-                const prColor = { '상': '#e03131', '중': '#f08c00', '하': '#868e96' };
-                box.innerHTML = `
-                    <div style="font-size:15px; font-weight:700; color:#501100; margin-bottom:10px;">${a.headline}</div>
-                    ${a.summary ? `<div style="font-size:12.5px; color:#666; line-height:1.7; margin-bottom:10px; padding:8px 10px; background:#faf7f5; border-radius:6px;">${a.summary}</div>` : ''}
-                    ${insights.map(i => `
-                        <div style="margin-bottom:8px;">
-                            <div style="font-size:13px; font-weight:600; color:#444;">📌 ${i.title}</div>
-                            <div style="font-size:12.5px; color:#777; line-height:1.6;">${i.detail}</div>
-                        </div>`).join('')}
-                    <div class="comp-section-title" style="margin-top:12px;">이번 주 할 일</div>
-                    ${actions.map(x => `
-                        <div class="product-row" style="align-items:flex-start;">
-                            <span class="product-name">
-                                <span class="cancel-badge" style="background:${prColor[x.priority] || '#868e96'}; margin-right:6px;">${x.priority}</span>
-                                <b>${x.title}</b><br>
-                                <span style="color:#888; font-size:12px;">${x.detail}</span>
-                            </span>
-                        </div>`).join('')}
-                `;
-            });
-
-            // 네이버 리뷰 (marketing_stats와 독립적으로 렌더)
-            loadJson('./processed/reviews.json').then(rv => {
-                const list = document.getElementById('naverReviewList');
-                if (!rv || !rv.reviews || !rv.reviews.length) {
-                    list.innerHTML = '<div class="empty-note">리뷰 데이터가 아직 없습니다 (매일 22:01 수집)</div>';
-                    return;
-                }
-                document.getElementById('naverReviewTitle').textContent =
-                    `💬 네이버 방문자 리뷰 · 총 ${rv.total || '?'}개` +
-                    (rv.avg_rating_recent ? ` · 최근 평점 ★${rv.avg_rating_recent}` : '');
-                list.innerHTML = rv.reviews.map(r => `
-                    <div class="review-card">
-                        <div class="review-head">
-                            <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
-                            <span class="review-meta">${r.author} · 방문 ${r.visited || '-'}</span>
-                        </div>
-                        <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
-                    </div>
-                `).join('');
-            });
-
-            // 배민/쿠팡이츠 리뷰 (사장님이 직접 전달, 수동 등록) — 채널 필터 지원
-            window.renderManualReviews = function (filter) {
-                window._manualReviewFilter = filter;
-                const list = document.getElementById('manualReviewList');
-                const all = window._manualReviews || [];
-                if (!all.length) {
-                    list.innerHTML = '<div class="empty-note">아직 등록된 리뷰가 없습니다. 새 리뷰가 올라오면 캡처/텍스트로 전달해주세요.</div>';
-                    return;
-                }
-                const cntOf = ch => all.filter(r => r.channel === ch).length;
-                document.getElementById('manualReviewTitle').textContent =
-                    `🛵 배민 · 쿠팡이츠 리뷰 (수동 등록) · 총 ${all.length}개`;
-                const mkBtn = (label, count) => {
-                    const on = filter === label;
-                    return `<button onclick="renderManualReviews('${label}')" style="padding:5px 14px; font-size:12px; border-radius:14px; cursor:pointer; border:1px solid ${on ? '#501100' : '#ddd'}; background:${on ? '#501100' : '#fff'}; color:${on ? '#fff' : '#666'}; font-weight:${on ? '700' : '400'};">${label}${count != null ? ' ' + count : ''}</button>`;
+            const matRate = 0.42;
+            const F0 = n => Math.round(n).toLocaleString();
+            const rows = segs.map(s => {
+                let days = 0, cnt = 0, amt = 0, settle = 0, adCost = 0;
+                dates.forEach(d => {
+                    if (d < s.start || d > s.end) return;
+                    const v = cpDaily[d];
+                    if (!v || !v.cnt) return;
+                    days++; cnt += v.cnt; amt += v.amt;
+                    const med = Math.round(v.amt * cp.mediation_pct / 100);
+                    const pay = Math.round(v.amt * cp.payment_pct / 100);
+                    const del = (cp.delivery_fixed || 0) * v.cnt;
+                    const ad = Math.round(v.amt * s.pct / 100);
+                    const vat = Math.round((med + pay + del + ad) * 0.1);
+                    settle += v.amt - (med + pay + del + ad + vat);
+                    adCost += ad + Math.round(ad * 0.1);
+                });
+                if (!days) return null;
+                const profit = settle - Math.round(amt * matRate);
+                return {
+                    pct: s.pct, start: s.start, end: s.end, days: days,
+                    cntDay: cnt / days, revDay: amt / days, adDay: adCost / days,
+                    profitDay: profit / days, ongoing: s.end === tIso
                 };
-                const bar = `<div style="display:flex; gap:6px; margin-bottom:10px;">` +
-                    mkBtn('전체', all.length) + mkBtn('배민', cntOf('배민')) + mkBtn('쿠팡이츠', cntOf('쿠팡이츠')) + `</div>`;
-                const shown = (filter === '전체' ? all : all.filter(r => r.channel === filter))
-                    .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-                list.innerHTML = bar + (shown.length === 0
-                    ? '<div class="empty-note">이 채널의 리뷰가 없습니다</div>'
-                    : shown.map(r => `
-                    <div class="review-card">
-                        <div class="review-head">
-                            <span class="review-stars">${r.rating ? '★'.repeat(r.rating) + '☆'.repeat(Math.max(0, 5 - r.rating)) : ''}</span>
-                            <span class="review-meta">[${r.channel || '?'}] ${r.date || ''}${r.author ? ' · ' + r.author : ''}${r.menu ? ' · ' + r.menu : ''}</span>
-                        </div>
-                        <div class="review-body">${(r.body || '').replace(/\n/g, '<br>')}</div>
-                    </div>`).join(''));
-            };
-            loadJson('./processed/manual_reviews.json').then(mr => {
-                window._manualReviews = (mr && mr.reviews) || [];
-                renderManualReviews(window._manualReviewFilter || '전체');
-            });
+            }).filter(Boolean);
 
-            const m = await loadJson('./processed/marketing_stats.json');
-            if (!m) {
-                document.getElementById('heatTable').innerHTML = '<tr><td class="empty-note">통계 데이터가 없습니다 (22:01 아카이브 후 생성됩니다)</td></tr>';
-                return;
-            }
+            if (!rows.length) { box.innerHTML = '<div class="empty-note">비교할 구간이 없습니다</div>'; return; }
+            const best = rows.filter(r => r.days >= 3).reduce((a, b) => (a == null || b.profitDay > a.profitDay) ? b : a, null);
+            const bestRev = rows.filter(r => r.days >= 3).reduce((a, b) => (a == null || b.revDay > a.revDay) ? b : a, null);
 
-            // ---- 0. 내일 닭 준비량 예측 ----
-            renderChickenForecast(m);
-            renderBmAdLab(m);
+            box.innerHTML = `<div style="overflow-x:auto;">
+                <table class="heat-table" style="min-width:560px;">
+                    <tr><th>광고율</th><th>기간</th><th>영업일</th><th>주문/일</th><th>매출/일</th><th>광고비/일</th><th>순이익/일*</th></tr>
+                    ${rows.map(r => `<tr${r.ongoing ? ' style="background:#f0f7ff;"' : ''}>
+                        <td><b>${r.pct}%</b>${r === best ? ' 🏆' : ''}${r === bestRev ? ' 📈' : ''}${r.ongoing ? ' <span style="color:#1971c2; font-size:11px;">◀ 진행 중</span>' : ''}</td>
+                        <td style="font-size:11.5px; color:#888;">${r.start.slice(5).replace('-', '/')}~${r.end.slice(5).replace('-', '/')}</td>
+                        <td>${r.days}일</td>
+                        <td>${r.cntDay.toFixed(1)}건</td>
+                        <td>${F0(r.revDay)}원</td>
+                        <td>${F0(r.adDay)}원</td>
+                        <td style="color:${r.profitDay < 0 ? '#e03131' : '#2b8a3e'};">${F0(r.profitDay)}원</td>
+                    </tr>`).join('')}
+                </table></div>
+                ${best ? `<div style="font-size:13px; margin-top:8px; padding:8px 10px; background:#f0f7f0; border-radius:8px;">🏆 순이익 최적: <b>${best.pct}%</b> (일 ${F0(best.profitDay)}원)${bestRev && bestRev !== best ? ` · 📈 매출 최고: <b>${bestRev.pct}%</b> (일 ${F0(bestRev.revDay)}원)` : ' · 📈 매출도 이 구간이 최고'}</div>` : ''}
+                <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 쿠팡 매출 − 수수료(중개·결제·배달비·광고·부가세) − 재료비(매출×42%). 광고비/일은 부가세 포함 매출연동 광고비입니다. 운영비(고정비)는 뺀 값이 아니며, 광고율끼리 비교하는 용도입니다.</p>`;
+        }
 
-            // ---- 1. 요일x시간 히트맵 (11시~22시) ----
+        function prevDayIso(iso) {
+            const d = new Date(iso + 'T00:00:00');
+            d.setDate(d.getDate() - 1);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        // 시간대별 평균 주문 건수 막대그래프 (요일 필터)
+        let _hourDow = 'all';
+        function renderHourBar(m) {
+            const tabs = document.getElementById('hourDowTabs');
+            const canvas = document.getElementById('hourBarChart');
+            if (!tabs || !canvas) return;
             const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-            const dowOrder = [2, 3, 4, 5, 6, 0, 1]; // 화수목금토일월 (영업 흐름 순)
-            const hours = [];
-            for (let h = 11; h <= 22; h++) hours.push(h);
+            const opts = [{ k: 'all', label: '전체 평균' }].concat([2, 3, 4, 5, 6, 0].map(d => ({ k: String(d), label: dayNames[d] })));
+            tabs.innerHTML = opts.map(o => {
+                const on = _hourDow === o.k;
+                return `<button onclick="setHourDow('${o.k}')" style="padding:5px 13px; font-size:12px; border-radius:14px; cursor:pointer; border:1px solid ${on ? '#501100' : '#ddd'}; background:${on ? '#501100' : '#fff'}; color:${on ? '#fff' : '#666'}; font-weight:${on ? '700' : '400'};">${o.label}</button>`;
+            }).join('');
 
-            // 가중 평균(최근 비중↑, 반감기 4주) 우선, 없으면 구버전(3개월 누적/일수) 폴백
+            const hours = []; for (let h = 11; h <= 22; h++) hours.push(h);
             const heatCnt3m = m.heat_count_3m || m.heat_count;
             const dowOccur3m = m.dow_occurrences_3m || [13, 13, 13, 13, 13, 13, 13];
             const avgOf = (d, h) => m.heat_wavg ? m.heat_wavg[d][h] : (heatCnt3m[d][h] / (dowOccur3m[d] || 1));
-            let maxAvg = 0;
-            dowOrder.forEach(d => hours.forEach(h => { maxAvg = Math.max(maxAvg, avgOf(d, h)); }));
+            const bizDows = [2, 3, 4, 5, 6, 0];   // 화~일 (월요일 휴무)
+            const data = hours.map(h => _hourDow === 'all'
+                ? bizDows.reduce((s, d) => s + avgOf(d, h), 0) / bizDows.length
+                : avgOf(+_hourDow, h));
+            const maxV = Math.max.apply(null, data);
+            const total = data.reduce((s, v) => s + v, 0);
 
-            let ht = '<tr><th></th>' + dowOrder.map(d => `<th>${dayNames[d]}</th>`).join('') + '</tr>';
-            hours.forEach(h => {
-                ht += `<tr><th>${h}시</th>`;
-                dowOrder.forEach(d => {
-                    const avg = avgOf(d, h);
-                    const ratio = maxAvg > 0 ? avg / maxAvg : 0;
-                    const alpha = avg > 0.005 ? 0.08 + ratio * 0.92 : 0;
-                    const txtColor = ratio > 0.55 ? 'white' : '#5a4436';
-                    const label = avg > 0.005 ? avg.toFixed(1) : '';
-                    ht += `<td class="heat-cell" style="background: rgba(80,17,0,${alpha.toFixed(3)}); color: ${txtColor};"
-                        title="${dayNames[d]}요일 ${h}시 · 평균 ${avg.toFixed(2)}건/일 (최근 데이터 가중)">${label}</td>`;
-                });
-                ht += '</tr>';
+            drawChart('hourBarChart', {
+                type: 'bar',
+                data: {
+                    labels: hours.map(h => h + '시'),
+                    datasets: [{
+                        label: '평균 주문 건수',
+                        data: data.map(v => +v.toFixed(2)),
+                        backgroundColor: data.map(v => `rgba(80,17,0,${(0.25 + 0.75 * (maxV > 0 ? v / maxV : 0)).toFixed(3)})`),
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    animation: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.parsed.y}건/일` + (total > 0 ? ` (하루의 ${(ctx.parsed.y / total * 100).toFixed(0)}%)` : '')
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { callback: v => v + '건' } } }
+                }
             });
-            document.getElementById('heatTable').innerHTML = ht;
+        }
 
-            // ---- 2. 주별 채널 매출 추이 (최근 8주, 누적 막대) ----
+        function setHourDow(k) {
+            _hourDow = k;
+            if (window._marketingStats) renderHourBar(window._marketingStats);
+        }
+
+        async function renderMarketing() {
+            const m = await loadJson('./processed/marketing_stats.json');
+            if (!m) {
+                document.getElementById('bmAdLabBox').innerHTML = '<div class="empty-note">통계 데이터가 없습니다 (22:30 아카이브 후 생성됩니다)</div>';
+                return;
+            }
+            window._marketingStats = m;
+
+            renderBmAdLab(m);
+            renderCpAdLab(m);
+            renderChickenForecast(m);
+            renderHourBar(m);
+
+            // ---- 주별 채널 매출 추이 (최근 8주, 누적 막대) ----
             const weeks = Object.keys(m.weekly_channel).sort().slice(-8);
             const datasets = CHANNEL_ORDER
                 .filter(ch => weeks.some(w => m.weekly_channel[w][ch]))
@@ -3753,45 +3614,6 @@
                             callbacks: { label: ctx => `${ctx.dataset.label}: ${(ctx.parsed.y || 0).toLocaleString()}원` }
                         }
                     }
-                }
-            });
-
-            // ---- 3. 리뷰이벤트 참여율 (주별 %) ----
-            const rWeeks = Object.keys(m.review_weekly).sort().slice(-8);
-            const rates = rWeeks.map(w => {
-                const r = m.review_weekly[w];
-                return r.orders > 0 ? +(r.review / r.orders * 100).toFixed(1) : 0;
-            });
-
-            drawChart('reviewChart', {
-                type: 'line',
-                data: {
-                    labels: rWeeks.map(w => w.replace(/^\d+-W/, '') + '주차'),
-                    datasets: [{
-                        label: '리뷰이벤트 참여율',
-                        data: rates,
-                        borderColor: '#8a4a1f',
-                        backgroundColor: 'rgba(138,74,31,0.12)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => {
-                                    const w = rWeeks[ctx.dataIndex];
-                                    const r = m.review_weekly[w];
-                                    return `참여율 ${ctx.parsed.y}% (${r.review}/${r.orders}건)`;
-                                }
-                            }
-                        }
-                    },
-                    scales: { y: { ticks: { callback: v => v + '%' }, beginAtZero: true } }
                 }
             });
         }
