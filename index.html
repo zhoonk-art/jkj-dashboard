@@ -3424,6 +3424,24 @@
                 (bestRev && best !== bestRev
                     ? ` · 📈 매출 최고: <b>${bestRev.p.bid}원</b> (일 ${F0(bestRev.revDay)}원, 순이익 최적 대비 매출 +${revGapPct}%) — 순익과 매출이 다른 입찰가를 가리키므로 성장 우선이면 ${bestRev.p.bid}원도 후보`
                     : ` · 📈 매출도 이 구간이 최고 — 순익·매출 모두 최적`) + `</div>` : '';
+            // ----- 첫 페이지 노출 관찰 + 최소 입찰가 방침 -----
+            let rankBlock = '';
+            {
+                const obs = (log.ranking_observations || []).slice(-6).reverse();
+                const floor = log.bid_floor_policy || '';
+                if (obs.length || floor) {
+                    const mark = r => /실패|안|밖/.test(r) ? '❌' : /성공|노출|확인|시작/.test(r) ? '✅' : '•';
+                    rankBlock = `<div style="margin-top:10px; padding:9px 11px; background:#fff8f2; border:1px solid #f0dfd0; border-radius:8px;">
+                        <div style="font-size:13px; font-weight:700; color:#8a4a1f; margin-bottom:6px;">🔎 배민 검색 첫 페이지 노출 기록</div>
+                        ${floor ? `<div style="font-size:12.5px; color:#c9480a; font-weight:600; margin-bottom:6px;">${floor.split('.')[0]}.</div>` : ''}
+                        ${obs.map(o => `<div style="font-size:12.5px; color:#666; line-height:1.7;">
+                            <span style="color:#999;">${(o.date || '').slice(5).replace('-', '/')}</span>
+                            <b style="color:#444;">${o.bid ? o.bid + '원' : '-'}</b>
+                            ${mark(o.result || '')} ${o.result || ''}</div>`).join('')}
+                        <div style="font-size:11.5px; color:#a09890; margin-top:6px;">노출 여부는 점심·저녁 피크에 각각 확인하고 Claude에게 알려주세요 — 순위는 시각·경쟁사 입찰에 따라 바뀝니다.</div>
+                    </div>`;
+                }
+            }
             box.innerHTML = `<div style="overflow-x:auto;">
                 <table class="heat-table" style="min-width:620px;">
                     <tr><th>입찰가</th><th>기간</th><th>영업일</th><th>주문/일</th><th>매출/일</th><th>정산/일</th><th>광고비/일</th><th>ROAS</th><th>순이익/일*</th></tr>
@@ -3440,7 +3458,8 @@
                     </tr>`).join('')}
                 </table></div>
                 ${verdictLine}
-                <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 정산액(수수료·부가세 차감) − 재료비(매출×${Math.round(matRate * 100)}%) − 광고비. 배민 채널(앱배달·가게배달·포장) 전체 기준이며 운영비(고정비)는 뺀 값이 아닙니다 — 입찰가끼리 비교하는 용도입니다. ROAS = 광고매출 ÷ 광고지출(배민 리포트 기준). <b>판단 기준은 순이익/일(🏆)과 매출/일(📈)을 함께</b> — 월매출 1억 목표라 매출 성장도 같이 감시하며, 노출수는 참고만 합니다(주문과 상관 낮음, 사장님 확정 7/25). 광고비가 '미입력'인 구간은 배민 광고 리포트의 일별 지출을 알려주시면 채워집니다. 계획: 225원 실험 판정(8/3) 후 50~100원씩 단계적으로 올리며 순이익·매출이 함께 꺾이는 꼭지점을 찾습니다.</p>`;
+                ${rankBlock}
+                <p class="settings-note" style="margin-top:8px;">* 순이익/일 = 정산액(수수료·부가세 차감) − 재료비(매출×${Math.round(matRate * 100)}%) − 광고비. 배민 채널(앱배달·가게배달·포장) 전체 기준이며 운영비(고정비)는 뺀 값이 아닙니다 — 입찰가끼리 비교하는 용도입니다. ROAS = 광고매출 ÷ 광고지출(배민 리포트 기준). 광고비가 '미입력'인 구간은 배민 광고 리포트의 일별 지출을 알려주시면 채워집니다.</p>`;
         }
 
         // 쿠팡이츠 매출연동 광고: fees.json ad_pct_history × marketing_stats.cp_daily 조인
