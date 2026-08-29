@@ -3430,7 +3430,7 @@
                 const obs = (log.ranking_observations || []).slice(-6).reverse();
                 const floor = log.bid_floor_policy || '';
                 if (obs.length || floor) {
-                    const mark = r => /실패|안|밖/.test(r) ? '❌' : /성공|노출|확인|시작/.test(r) ? '✅' : '•';
+                    const mark = r => /실패|이탈|밖/.test(r) ? '❌' : /성공|노출|확인|시작|위|슬롯|인상/.test(r) ? '✅' : '•';
                     rankBlock = `<div style="margin-top:10px; padding:9px 11px; background:#fff8f2; border:1px solid #f0dfd0; border-radius:8px;">
                         <div style="font-size:13px; font-weight:700; color:#8a4a1f; margin-bottom:6px;">🔎 배민 검색 첫 페이지 노출 기록</div>
                         ${floor ? `<div style="font-size:12.5px; color:#c9480a; font-weight:600; margin-bottom:6px;">${floor.split('.')[0]}.</div>` : ''}
