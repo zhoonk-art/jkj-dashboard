@@ -1617,7 +1617,7 @@
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
             // 총매출/포장/배달 카드에 예상 마진 + 마진률 병기 (인건비 포함)
-            Promise.all([loadFees(), loadMenuCosts(), loadCosts()]).then(() => {
+            Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]).then(() => {
                 let netSum = 0, matSum = 0;
                 const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
                 activeOrders.forEach(o => {
@@ -1630,7 +1630,7 @@
                 });
                 // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비(광고비 등)
                 const laborDay = laborForDate(effDate);
-                const adDay = dailyFixedCost();
+                const adDay = dailyFixedCost(effDate);
                 const margin = netSum - matSum - laborDay - adDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
@@ -1937,7 +1937,7 @@
                 }
             }
             html += '</div>';
-            html += `<div class="cal-month-total">이 달 합계: <b>${monthTotal.toLocaleString()}원</b> <span style="font-size:11.5px; color:#c92a2a;">■</span><span style="font-size:11.5px; color:#888;"> 빨간 날 = 마진 적자 (수수료·재료비·인건비·일할 고정비 차감 기준)</span></div>`;
+            html += `<div class="cal-month-total">이 달 합계: <b>${monthTotal.toLocaleString()}원</b> <span style="font-size:11.5px; color:#c92a2a;">■</span><span style="font-size:11.5px; color:#888;"> 빨간 날 = 마진 적자 (수수료·재료비·인건비·일할 고정비[월세 포함] 차감 기준)</span></div>`;
             html += `<div id="calMonthPL"></div>`;
             document.getElementById('calendarBox').innerHTML = html;
             colorizeCalendarMargins(); // 비동기로 적자 날 빨간 표시
@@ -2021,7 +2021,7 @@
         // 달력의 각 영업일 마진(실수령 − 재료비 − 인건비 − 일할 고정비)을 계산해 적자면 빨간색 표시
         const _dayMarginCache = {};
         async function colorizeCalendarMargins() {
-            await Promise.all([loadFees(), loadMenuCosts(), loadCosts()]);
+            await Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]);
             const cells = [...document.querySelectorAll('#calendarBox .cal-cell.has-data[data-date]')];
             await Promise.all(cells.map(async cell => {
                 const ds = cell.dataset.date;
@@ -2031,7 +2031,7 @@
                     let sum = 0;
                     od.orders.filter(o => o && !o.cancelled && !o.prepaid)
                         .forEach(o => { sum += orderNet(o).net - orderCost(o, ds); });
-                    _dayMarginCache[ds] = sum - laborForDate(ds) - dailyFixedCost();
+                    _dayMarginCache[ds] = sum - laborForDate(ds) - dailyFixedCost(ds);
                 }
                 const mg = _dayMarginCache[ds];
                 if (mg != null && mg < 0) {
@@ -2352,12 +2352,12 @@
 
             // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(오늘 실제 근무하는 직원만) 차감
             const laborDaily = laborForDate(todayStr());
-            const adDaily = dailyFixedCost();
+            const adDaily = dailyFixedCost(todayStr());
             const netMargin = net - totalMat - laborDaily - adDaily;
             const nmRate = gross > 0 ? (netMargin / gross * 100).toFixed(1) : 0;
             document.getElementById('profitNet').textContent = netMargin.toLocaleString() + '원';
             document.getElementById('profitNetSub').textContent =
-                `수수료·재료비·인건비(일 ${laborDaily.toLocaleString()}원)·광고비+관리비+가스비(일 ${adDaily.toLocaleString()}원) 차감 · 마진률 ${nmRate}%`;
+                `수수료·재료비·인건비(일 ${laborDaily.toLocaleString()}원)·고정비 월세+관리비+가스비+광고비(일 ${adDaily.toLocaleString()}원) 차감 · 마진률 ${nmRate}%`;
 
             const m = await calcMonthNet();
             document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
@@ -2795,11 +2795,38 @@
             return sum;
         }
 
-        // daily:true로 표시된 고정비(광고비 등, 매일 실제로 나가는 비용)를 하루치로 환산해 합산
-        function dailyFixedCost() {
+        // 그 달의 실제 영업일 수 (월요일 휴무 기준)
+        function bizDaysInMonth(ym) {
+            const y = +ym.substring(0, 4), mo = +ym.substring(5, 7) - 1;
+            const total = new Date(y, mo + 1, 0).getDate();
+            let n = 0;
+            for (let i = 1; i <= total; i++) { if (new Date(y, mo, i).getDay() !== 1) n++; }
+            return n;
+        }
+
+        // 그 날짜에 해당하는 배민 광고 실비 (사장님이 전달해준 일별 리포트)
+        function bmAdSpendOn(dateStr) {
+            if (!bmAdLog || !bmAdLog.daily) return null;
+            const r = bmAdLog.daily.find(d => d.date === dateStr);
+            return r ? (r.spend || 0) : null;
+        }
+
+        // 하루치 고정비 = 그 달 고정비 전액 ÷ 그 달 영업일 수.
+        // ★월세도 포함한다 — 장사를 하든 안 하든 매달 나가는 돈이므로 하루 마진에서 빼야 진짜 손에 남는 돈이 나온다.
+        //   (예전에는 daily:true인 항목만 골라 /30으로 나눠서 월세 990,000원이 통째로 빠져 있었다.)
+        //   나누는 값도 30일이 아니라 실제 영업일 수 — 월요일에 쉬는 만큼 영업일이 더 부담해야 계산이 맞는다.
+        //   배민 광고비는 그날 실비가 있으면 그 값을 그대로 쓴다.
+        function dailyFixedCost(dateStr) {
+            const ds = dateStr || todayStr();
+            const ym = ds.substring(0, 7);
+            const bd = bizDaysInMonth(ym) || 26;
             return (costsConfig.fixed || []).reduce((s, f) => {
-                if (!f.daily) return s;
-                return s + Math.round((f.amount || 0) / 30);
+                if (f.source === 'bm_ad_log') {
+                    const actual = bmAdSpendOn(ds);
+                    if (actual != null) return s + actual;
+                    return s + Math.round((f.amount || 0) / bd);
+                }
+                return s + Math.round(fixedAmountFor(f, ym).amt / bd);
             }, 0);
         }
 
