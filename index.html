@@ -1581,6 +1581,12 @@
             }));
             const activeOrders = orders.filter(o => !o.cancelled && !o.prepaid); // 취소·선결제 제외한 유효 주문
 
+            // ★ orders_latest.json은 새 영업일 첫 주문이 들어오기 전까지 전날 데이터를 그대로 들고 있다.
+            //   그때 dateStr(=오늘)로 인건비를 계산하면 요일이 어긋나 마진이 통째로 튄다.
+            //   (실제 사고: 8/28 금요일 주문을 8/29 토요일로 계산 → 염승혜 인건비 97,500원이 빠져 15만 → 25만으로 보였음)
+            //   그래서 원가·인건비 계산은 항상 데이터 자신의 날짜(effDate)를 쓴다.
+            const effDate = (data.date && /^\d{4}-\d{2}-\d{2}$/.test(data.date)) ? data.date : dateStr;
+            const staleDay = effDate !== dateStr;
             const isToday = dateStr === todayStr();
             let titleText = isToday ? '📋 오늘의 주문 현황' : `📋 ${dateStr} 주문 내역`;
             if (summary.prepaid_count > 0) {
@@ -1615,21 +1621,22 @@
                 let netSum = 0, matSum = 0;
                 const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
                 activeOrders.forEach(o => {
-                    const n = orderNet(o).net;
-                    const c = orderCost(o, dateStr);
+                    const n = orderNet(o, effDate).net;
+                    const c = orderCost(o, effDate);
                     netSum += n; matSum += c;
                     const t = byType[o.type] || byType.takeout;
                     t.margin += n - c;
                     t.gross += o.amount;
                 });
                 // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비(광고비 등)
-                const laborDay = laborForDate(dateStr);
+                const laborDay = laborForDate(effDate);
                 const adDay = dailyFixedCost();
                 const margin = netSum - matSum - laborDay - adDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
                     activeOrders.length > 0
-                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}%)`
+                        ? `예상 마진 약 ${margin.toLocaleString()}원<br>(마진률 ${rate}%)` +
+                          (staleDay ? `<br><span style="font-size:11px; color:#c92a2a;">※ ${effDate} 주문 기준 (아직 오늘 주문 없음)</span>` : '')
                         : '';
 
                 // 포장/배달 카드: 금액 옆에 마진률
