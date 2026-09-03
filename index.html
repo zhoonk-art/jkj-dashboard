@@ -306,9 +306,29 @@
         .order-header-left {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             flex: 1;
+            min-width: 0;
         }
+
+        /* 주문 순번 배지 — 그날 첫 주문이 1번 (시간 순) */
+        .order-no {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 5px;
+            border-radius: 11px;
+            background: #f1f3f5;
+            color: #868e96;
+            font-size: 12px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+        .order-card.cancelled .order-no { background: #ffe3e3; color: #c92a2a; text-decoration: line-through; }
+        .order-card.prepaid .order-no { background: #ede7fb; color: #7048e8; }
 
         .order-type {
             display: inline-block;
@@ -1822,6 +1842,7 @@
                     <div class="order-card ${order.type}${order.cancelled ? ' cancelled' : ''}${order.prepaid ? ' prepaid' : ''}">
                         <div class="order-header" onclick="toggleOrder(${index})">
                             <div class="order-header-left">
+                                <span class="order-no">${index + 1}</span>
                                 <span class="order-type ${order.type}">
                                     ${order.type === 'delivery' ? '🚗 배달' : '🏪 포장'}
                                 </span>
