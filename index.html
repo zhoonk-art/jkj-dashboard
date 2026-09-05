@@ -2442,7 +2442,10 @@
             mc.oil_per_change = mc.oil_buy - mc.oil_sell;
             mc.oil_per_kg = R(mc.oil_per_change / (oil.kg_per_change || 28));
             mc.oil_per_order = R(mc.oil_per_change / (oil.orders_per_change || 57));
-            mc.oil_by_order = (oil.allocation || 'per_order') !== 'per_kg';
+            // 배분 방식 3가지: 'fixed_cost'(기본, 재료비 제외하고 costs.json 고정비로) · 'per_order' · 'per_kg'
+            mc.oil_alloc = oil.allocation || 'fixed_cost';
+            mc.oil_by_order = mc.oil_alloc === 'per_order';
+            mc.oil_by_kg = mc.oil_alloc === 'per_kg';
             mc.per_menu = { '치킨무': R((r['치킨무 50개'] || 0) / 50) };
             mc.sides = mc.sides || {};
             mc.sides['즉석밥'] = R((r['즉석밥 24개'] || 0) / 24);
@@ -2544,7 +2547,7 @@
                     chickenMenus += qty;
                     const sz = size || '반마리';
                     cost += chickenBaseOn(sz, costDate) * qty; // 날짜별 닭 단가 (costDate 없으면 현재가)
-                    if (!mc.oil_by_order) cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)) * qty; // 기름 (닭 kg 비례 모드일 때만)
+                    if (mc.oil_by_kg) cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)) * qty; // 기름 (닭 kg 비례 모드일 때만)
 
                     // 박스
                     if (banban) cost += (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) * qty;
@@ -2628,8 +2631,8 @@
                     소스(1국자): 양념 ${menuCosts.sauce_per_half['달콤양념']} · 매콤간장 ${menuCosts.sauce_per_half['매콤간장']}원<br>
                     박스(겉+속): 반 ${menuCosts.box['반마리']} · 한 ${menuCosts.box['한마리']} · 반/반 ${menuCosts.box['한마리 반/반']} · 두 ${menuCosts.box['두마리']}원<br>
                     새우: 6p ${menuCosts.shrimp['6p'].toLocaleString()} · 12p ${menuCosts.shrimp['12p'].toLocaleString()} · 24p ${menuCosts.shrimp['24p'].toLocaleString()}원<br>
-                    기름: ${menuCosts.oil_by_order ? `주문 1건당 <b>${(menuCosts.oil_per_order || 0).toLocaleString()}원</b> (사이즈 무관)` : `닭 1kg당 ${(menuCosts.oil_per_kg || 0).toLocaleString()}원 (반 ${Math.round((menuCosts.oil_per_kg || 0) * 0.35).toLocaleString()} · 한 ${Math.round((menuCosts.oil_per_kg || 0) * 0.7).toLocaleString()} · 두 ${Math.round((menuCosts.oil_per_kg || 0) * 1.4).toLocaleString()}원)`}
-                    — 1회 교체 ${(menuCosts.oil_buy || 0).toLocaleString()}원 매입 − 폐유 판매 ${(menuCosts.oil_sell || 0).toLocaleString()}원 = ${(menuCosts.oil_per_change || 0).toLocaleString()}원 ÷ ${menuCosts.oil_by_order ? `평균 ${((menuCosts.oil || {}).orders_per_change || 57)}건` : `닭 ${((menuCosts.oil || {}).kg_per_change || 28)}kg`}<br>
+                    기름: ${menuCosts.oil_alloc === 'fixed_cost' ? `<b>재료비에 없음</b> — 운영비(고정비)의 「식용유」 항목으로 처리` : menuCosts.oil_by_order ? `주문 1건당 <b>${(menuCosts.oil_per_order || 0).toLocaleString()}원</b> (사이즈 무관)` : `닭 1kg당 ${(menuCosts.oil_per_kg || 0).toLocaleString()}원`}
+                    ${menuCosts.oil_alloc === 'fixed_cost' ? '— 기름은 튀긴 양이 아니라 튀김기를 켜둔 시간에 좌우되므로 고정비로 잡습니다 (8월 실비 671,800원 = 17통 매입 − 폐유 14.4통 판매)' : `— 1회 교체 ${(menuCosts.oil_buy || 0).toLocaleString()}원 매입 − 폐유 판매 ${(menuCosts.oil_sell || 0).toLocaleString()}원 = ${(menuCosts.oil_per_change || 0).toLocaleString()}원`}<br>
                     치킨무: ${menuCosts.per_menu['치킨무']}원<br>
                     즉석밥: ${menuCosts.sides['즉석밥'].toLocaleString()}원 · 샐러드: ${menuCosts.sides['양배추샐러드']}원 · 떡사리: 40g ${menuCosts.sides['떡사리40g']} / 80g ${menuCosts.sides['떡사리80g']}원
                 </div>`;
@@ -2682,7 +2685,7 @@
             if (hasChicken && (sizeM || banban)) {
                 const sz = sizeM ? sizeM[1] : '한마리';
                 cost += mc.chicken_base[sz] || 0;
-                if (!mc.oil_by_order) cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)); // 기름 (닭 kg 비례 모드일 때만)
+                if (mc.oil_by_kg) cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)); // 기름 (닭 kg 비례 모드일 때만)
                 cost += banban ? (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) : (mc.box[sz] || 0);
                 const halves = sz === '두마리' ? 4 : sz === '한마리' ? 2 : banban ? 2 : 1;
                 cost += (mc.sauce_per_half['달콤양념'] || 0) * halves;
