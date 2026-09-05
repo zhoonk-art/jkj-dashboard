@@ -2001,9 +2001,17 @@
             // 인건비는 평일/주말로, 광고비는 배민/쿠팡으로 묶어서 각각 한 줄로 보여준다.
             const isWeekendLabor = l => Array.isArray(l.weekdays) && l.weekdays.length > 0
                 && l.weekdays.every(d => d === 0 || d === 6);
+            // 진행 중인 달은 오늘까지만 — 인건비는 실제 근무일을 하루하루 더하고,
+            // 월세·관리비 등 고정비는 경과 영업일 비율로 일할 계산한다.
+            const upto = isCur ? todayStr() : null;
+            const bizTot = bizDaysInMonth(ym) || 1;
+            const bizEl = isCur ? bizDaysElapsed(ym, upto) : bizTot;
+            const proRate = bizTot > 0 ? bizEl / bizTot : 1;
+            const proTag = isCur ? ` <span class="pl-actual">${bizEl}/${bizTot}일치</span>` : '';
+
             let laborWk = 0, laborWknd = 0;
             (costsConfig.labor || []).forEach(l => {
-                const amt = laborMonthly(l, ym);
+                const amt = laborMonthly(l, ym, upto);
                 if (!amt) return;
                 if (isWeekendLabor(l)) laborWknd += amt; else laborWk += amt;
             });
@@ -2011,13 +2019,19 @@
 
             // 고정비에서 배민 광고비는 빼내어 쿠팡 광고비와 합친다 (청구 방식만 다를 뿐 같은 광고비)
             const fixedRows = [];
-            let bmAd = 0, anyEst = false, adDays = null;
+            let bmAd = 0, anyEst = false, adDays = null, adEst = false;
             (costsConfig.fixed || []).forEach(f => {
                 const a = fixedAmountFor(f, ym);
                 if (!a.amt) return;
-                if (/광고/.test(f.name)) { bmAd += a.amt; if (a.actualDays) adDays = a.actualDays; if (a.est) anyEst = true; return; }
+                if (/광고/.test(f.name)) {
+                    // 광고 리포트 실지출이 있으면 그대로, 아직 없어 추정치를 쓰는 달이면 일할한다
+                    bmAd += a.est ? Math.round(a.amt * proRate) : a.amt;
+                    if (a.actualDays) adDays = a.actualDays;
+                    if (a.est) { anyEst = true; adEst = true; }
+                    return;
+                }
                 if (a.est) anyEst = true;
-                fixedRows.push({ name: f.name, amt: a.amt, est: a.est });
+                fixedRows.push({ name: f.name, amt: Math.round(a.amt * proRate), est: a.est, pro: isCur });
             });
             const adTotal = bmAd + adv;
             const opTotal = fixedRows.reduce((s, r) => s + r.amt, 0) + bmAd + laborTotal;
@@ -2046,7 +2060,10 @@
                         let label = r.name;
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
                         if (r.est) label += ' <span class="pl-est">추정</span>';
+                        if (r.pro) label += proTag;
+                        if (r.name === '인건비' && isCur) label += proTag;
                         if (r.name === '광고비' && adDays) label += ` <span class="pl-actual">실비 ${adDays}일치</span>`;
+                        if (r.name === '광고비' && adEst) label += ' <span class="pl-est">배민 추정</span>' + proTag;
                         if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.join(' · ')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
@@ -2060,7 +2077,7 @@
                 </table>
                 <div class="cal-pl-note">
                     영업 ${mn.days}일 · 하루 평균 매출 ${F(mn.gross / mn.days)}원 · 하루 평균 순익 ${F(profit / mn.days)}원 · 세금(부가세·소득세) 내기 전 기준입니다.
-                    ${isCur ? '<br><b>아직 이 달이 끝나지 않았습니다.</b> 매출은 오늘까지인데 월세·인건비는 한 달 전액이라 손익이 실제보다 나쁘게 보입니다. 월말에 정확해집니다.' : ''}
+                    ${isCur ? `<br>· <b>진행 중인 달</b>이라 운영비는 ${bizEl}/${bizTot} 영업일만큼만 잡았습니다 — 인건비는 실제 근무일을 하루씩 더했고, 월세·관리비 등은 경과 영업일 비율로 일할 계산했습니다.` : ''}
                     ${anyEst ? '<br>· <span class="pl-est">추정</span> 은 실제 납부액이 아직 입력되지 않아 최근 금액으로 계산한 항목입니다.' : ''}
                     ${adDays ? '<br>· <span class="pl-actual">실비</span> 는 배민 광고 리포트에 기록된 실제 지출을 그대로 합산한 값입니다.' : ''}
                 </div>
@@ -2304,8 +2321,8 @@
             await loadCosts();
             renderCostSettings();
             renderMenuCostSettings();
-            const mc = costsTotal();
-            document.getElementById('monthCosts').textContent = mc.toLocaleString() + '원';
+            const mc = costsAccrued();                 // 손익 계산엔 '지금까지 발생한' 운영비
+            document.getElementById('monthCosts').textContent = costsTotal().toLocaleString() + '원';
 
             if (!data) return;
 
@@ -2425,7 +2442,8 @@
             let bizDays = 0;
             for (let bi = 1; bi <= bizTotal; bi++) { if (new Date(bizY, bizM, bi).getDay() !== 1) bizDays++; }
             const marginRate = m.gross > 0 ? (m.net - m.mat) / m.gross : 0.45;
-            const dailyNeed = marginRate > 0 ? Math.round(mc / bizDays / marginRate) : 0;
+            // 손익분기는 한 달 전액 운영비로 계산한다 (mc는 오늘까지 발생분이라 쓰면 안 됨)
+            const dailyNeed = marginRate > 0 ? Math.round(costsTotal() / bizDays / marginRate) : 0;
             document.getElementById('breakEvenInfo').textContent =
                 `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (${bizM + 1}월 영업일 ${bizDays}일 = ${bizTotal}일 − 월요일 ${bizTotal - bizDays}일)`;
         }
@@ -2789,21 +2807,56 @@
 
         // 해당 월(기본 이번 달)의 실제 요일 수로 인건비 계산. l.start/l.end(YYYY-MM-DD)가 있으면 그 기간만.
         // weekdays 미지정 항목은 예전 방식(주당 일수 × 4.345주) 폴백.
-        function laborMonthly(l, ym) {
-            if (!Array.isArray(l.weekdays) || !l.weekdays.length) {
-                return Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
-            }
+        // upto(YYYY-MM-DD)를 주면 그 날짜까지만 센다 — 진행 중인 달의 인건비를 하루하루 쌓아 계산하기 위함.
+        function laborMonthly(l, ym, upto) {
             ym = ym || todayStr().substring(0, 7);
             const y = +ym.substring(0, 4), m = +ym.substring(5, 7);
             const lastDay = new Date(y, m, 0).getDate();
+            const endDay = (upto && upto.substring(0, 7) === ym)
+                ? Math.min(+upto.substring(8, 10), lastDay) : lastDay;
+            if (!Array.isArray(l.weekdays) || !l.weekdays.length) {
+                const full = Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
+                return Math.round(full * endDay / lastDay);
+            }
             let cnt = 0;
-            for (let d = 1; d <= lastDay; d++) {
+            for (let d = 1; d <= endDay; d++) {
                 const iso = ym + '-' + String(d).padStart(2, '0');
                 if (l.start && iso < l.start) continue;
                 if (l.end && iso > l.end) continue;
                 if (l.weekdays.includes(new Date(y, m - 1, d).getDay())) cnt++;
             }
             return Math.round((l.hourly || 0) * (l.hours || 0) * cnt);
+        }
+
+        // 그 달 1일부터 upto까지 지난 영업일 수 (월요일 휴무 기준)
+        function bizDaysElapsed(ym, upto) {
+            const y = +ym.substring(0, 4), mo = +ym.substring(5, 7) - 1;
+            const last = new Date(y, mo + 1, 0).getDate();
+            const endDay = (upto && upto.substring(0, 7) === ym)
+                ? Math.min(+upto.substring(8, 10), last) : last;
+            let n = 0;
+            for (let i = 1; i <= endDay; i++) { if (new Date(y, mo, i).getDay() !== 1) n++; }
+            return n;
+        }
+
+        // 그 달에 '지금까지 실제로 발생한' 운영비.
+        // 지난 달은 전액. 진행 중인 달은 경과 영업일수만큼 일할 — 매출은 오늘까지인데
+        // 월세·인건비를 한 달 전액으로 빼면 손익이 실제보다 훨씬 나쁘게 보이기 때문.
+        // 배민 광고비(source:bm_ad_log)는 이미 그 달 실지출 합계라 일할하지 않는다.
+        function costsAccrued(ym) {
+            ym = ym || todayStr().substring(0, 7);
+            const isCur = ym === todayStr().substring(0, 7);
+            const upto = isCur ? todayStr() : null;
+            const tot = bizDaysInMonth(ym) || 1;
+            const el = isCur ? bizDaysElapsed(ym, upto) : tot;
+            const rate = tot > 0 ? el / tot : 1;
+            let sum = 0;
+            (costsConfig.fixed || []).forEach(f => {
+                const a = fixedAmountFor(f, ym);
+                sum += (f.source === 'bm_ad_log' && !a.est) ? a.amt : Math.round(a.amt * rate);
+            });
+            (costsConfig.labor || []).forEach(l => { sum += laborMonthly(l, ym, upto); });
+            return sum;
         }
 
         // 특정 날짜(dateStr, YYYY-MM-DD)에 실제로 근무하는 인건비만 합산 (weekdays 미지정 시 항상 포함)
