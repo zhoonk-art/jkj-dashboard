@@ -2405,7 +2405,7 @@
         let menuCosts = null;
 
         // 매입가(raw)에서 단위 원가 자동 계산
-        // 고정 사용량: 닭 반350g/한700g/두1.4kg(생닭 기준), 파우더 130g/닭kg, 양념 150g/간장 100g(반마리 실측), 기름 2통/100건, 떡 반40g/한80g
+        // 고정 사용량: 닭 반350g/한700g/두1.4kg(생닭 기준), 파우더 130g/닭kg, 양념 150g/간장 100g(반마리 실측), 기름 1회 교체 33L(=1.83통)당 닭 35.7kg, 떡 반40g/한80g
         function applyDerivedCosts(mc) {
             const r = mc && mc.raw;
             if (!r) return mc;
