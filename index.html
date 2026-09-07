@@ -2439,13 +2439,12 @@
             const bizNow = new Date();
             const bizY = bizNow.getFullYear(), bizM = bizNow.getMonth();
             const bizTotal = new Date(bizY, bizM + 1, 0).getDate();
-            let bizDays = 0;
-            for (let bi = 1; bi <= bizTotal; bi++) { if (new Date(bizY, bizM, bi).getDay() !== 1) bizDays++; }
+            const bizDays = bizDaysInMonth(todayStr().substring(0, 7));
             const marginRate = m.gross > 0 ? (m.net - m.mat) / m.gross : 0.45;
             // 손익분기는 한 달 전액 운영비로 계산한다 (mc는 오늘까지 발생분이라 쓰면 안 됨)
             const dailyNeed = marginRate > 0 ? Math.round(costsTotal() / bizDays / marginRate) : 0;
             document.getElementById('breakEvenInfo').textContent =
-                `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (${bizM + 1}월 영업일 ${bizDays}일 = ${bizTotal}일 − 월요일 ${bizTotal - bizDays}일)`;
+                `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (${bizM + 1}월 영업일 ${bizDays}일 / 총 ${bizTotal}일${bizTotal > bizDays ? ` − 휴무 ${bizTotal - bizDays}일` : ' · 휴무 없음'})`;
         }
 
         // ===== 재료비 (메뉴별 원가) =====
@@ -2835,7 +2834,7 @@
             const endDay = (upto && upto.substring(0, 7) === ym)
                 ? Math.min(+upto.substring(8, 10), last) : last;
             let n = 0;
-            for (let i = 1; i <= endDay; i++) { if (new Date(y, mo, i).getDay() !== 1) n++; }
+            for (let i = 1; i <= endDay; i++) { if (isBizDay(ym + '-' + String(i).padStart(2, '0'))) n++; }
             return n;
         }
 
@@ -2906,12 +2905,29 @@
             return sum;
         }
 
-        // 그 달의 실제 영업일 수 (월요일 휴무 기준)
+        // 그 날짜에 적용되는 휴무 요일 목록. costs.json의 operating_history(from일부터 적용)를 따른다.
+        // 설정이 없으면 예전 기본값인 월요일 휴무([1])로 동작한다.
+        function closedWeekdaysOn(iso) {
+            const hist = (costsConfig && costsConfig.operating_history) || null;
+            if (!hist || !hist.length) return [1];
+            let cur = null;
+            hist.slice().sort((a, b) => a.from.localeCompare(b.from))
+                .forEach(h => { if (h.from <= iso) cur = h; });
+            return cur ? (cur.closed_weekdays || []) : (hist[0].closed_weekdays || [1]);
+        }
+        function isBizDay(iso) {
+            const d = new Date(iso + 'T00:00:00').getDay();
+            return closedWeekdaysOn(iso).indexOf(d) < 0;
+        }
+
+        // 그 달의 실제 영업일 수 (휴무 요일은 operating_history 기준, 달 중간에 바뀌어도 정확)
         function bizDaysInMonth(ym) {
             const y = +ym.substring(0, 4), mo = +ym.substring(5, 7) - 1;
             const total = new Date(y, mo + 1, 0).getDate();
             let n = 0;
-            for (let i = 1; i <= total; i++) { if (new Date(y, mo, i).getDay() !== 1) n++; }
+            for (let i = 1; i <= total; i++) {
+                if (isBizDay(ym + '-' + String(i).padStart(2, '0'))) n++;
+            }
             return n;
         }
 
