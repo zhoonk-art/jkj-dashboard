@@ -353,6 +353,22 @@
             font-size: 12px;
         }
 
+        /* 배달앱 주문번호 뒤 4자리 — 배민·쿠팡 앱 화면과 대조용 */
+        .order-appno {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: #eef1f5;
+            color: #5c6b7a;
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            user-select: all;
+        }
+        .order-card.cancelled .order-appno { background: #ffe3e3; color: #c92a2a; }
+
         .order-summary {
             display: flex;
             gap: 12px;
@@ -1863,6 +1879,7 @@
                                 <span class="order-time-channel">
                                     ${order.channel} • ${order.time}
                                 </span>
+                                ${appOrderNo(order.order_no) ? `<span class="order-appno" title="전체 주문번호: ${order.order_no}" onclick="event.stopPropagation()">#${appOrderNo(order.order_no)}</span>` : ''}
                             </div>
                             <div class="order-summary">
                                 <div class="order-amount">${order.cancelled ? '<s>' + order.amount.toLocaleString() + '원</s>' : order.amount.toLocaleString() + '원'}</div>
@@ -2108,6 +2125,14 @@
             }));
         }
 
+        // 배달앱 주문번호 뒤 4자리. 매장 포장(POS-NN)은 앱 번호가 아니므로 표시하지 않는다.
+        // 배민 T2G70001AS4R(12) · 쿠팡 1PEJAV(6) · 배민가게배달 B2G600DGPE(10) · 네이버 1348425821(10)
+        // 앞자리는 가게·날짜 공통 코드라 실제 식별자 역할을 하는 건 뒤 4자리다.
+        function appOrderNo(no) {
+            const s = String(no || '').trim();
+            if (!s || /^POS-/i.test(s)) return '';
+            return s.length >= 4 ? s.slice(-4) : s;
+        }
         // ===== 통계 뷰 =====
         async function renderStats() {
             const monthly = await loadJson('./processed/monthly_summary.json');
