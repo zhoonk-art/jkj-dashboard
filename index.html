@@ -934,6 +934,14 @@
             font-size: 13px;
         }
 
+        .fee-table tr.menu-sec td {
+            background: #f6f2ef;
+            font-weight: 700;
+            color: #8a4a1f;
+            font-size: 12.5px;
+            padding: 7px 8px;
+        }
+
         .fee-table th {
             background: #faf7f5;
             color: #777;
@@ -1283,7 +1291,7 @@
 
             <div class="orders-section" style="margin-top: 12px; margin-bottom: 12px;">
                 <h2>📋 메뉴별 마진표</h2>
-                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). menu_costs.json의 가격은 포장가 기준이며, 배달가는 전 메뉴 공통으로 포장가+3,000원입니다. 포장 마진은 재료비만 차감, 배달 마진은 배달가 기준으로 배달의민족 앱주문 수수료(중개 7.8%+결제 3.0%+배달비 3,400원+부가세)까지 차감한 값입니다 — 채널에 따라 실제 마진은 이보다 다소 높거나(가게배달·땡겨요) 낮을(쿠팡이츠 광고비 별도) 수 있습니다.</p>
+                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). menu_costs.json의 가격은 포장가 기준이며, 배달가는 전 메뉴 공통으로 포장가+3,000원입니다. 포장 마진은 재료비만 차감, 배달 마진은 배달가 기준으로 배달의민족 앱주문 수수료(중개 7.8%+결제 3.0%+배달비 3,400원+부가세)까지 차감한 값입니다 — 채널에 따라 실제 마진은 이보다 다소 높거나(가게배달·땡겨요) 낮을(쿠팡이츠 광고비 별도) 수 있습니다. 사이드·음료는 배달앱에서도 같은 가격이고, 건당 배달비는 주문당 한 번만 나가므로 본메뉴에서만 차감했습니다.</p>
                 <div style="overflow-x: auto;">
                     <table class="fee-table" id="menuMarginTable"></table>
                 </div>
@@ -3054,6 +3062,15 @@
             return price - med - pay - del - vat;
         }
 
+        // 사이드·음료는 주문에 얹혀 나가므로 건당 배달비를 다시 빼지 않는다 (%수수료만 차감)
+        function deliveryNetForItem(price) {
+            const f = feeFor('배달의민족');
+            const med = Math.round(price * f.med / 100);
+            const pay = Math.round(price * f.pay / 100);
+            const vat = Math.round((med + pay) * 0.1);
+            return price - med - pay - vat;
+        }
+
         const PACKAGING_DISCOUNT = 3000; // 전 메뉴 공통: 방문포장 시 배달가 대비 3,000원 할인. menu_prices의 price는 포장가 기준
 
         function renderMenuMarginTable() {
@@ -3079,6 +3096,35 @@
                     <td class="net-cell">${dRate}%</td>
                 </tr>`;
             });
+
+            // ----- 사이드 · 음료 -----
+            // 닭강정과 달리 배달앱에서도 같은 가격이라 포장가=배달가.
+            const sp = menuCosts.side_prices || [];
+            if (sp.length) {
+                const sec = k => {
+                    const list = sp.filter(s => (s.kind || 'side') === k);
+                    if (!list.length) return;
+                    html += `<tr class="menu-sec"><td colspan="7">${k === 'drink' ? '🥤 음료' : '🍟 사이드'}</td></tr>`;
+                    list.forEach(s => {
+                        const c = sideDrinkCost(s.name);
+                        const mg = s.price - c;
+                        const rate = s.price > 0 ? (mg / s.price * 100).toFixed(1) : 0;
+                        const dNet = deliveryNetForItem(s.price);
+                        const dMg = dNet - c;
+                        const dRate = s.price > 0 ? (dMg / s.price * 100).toFixed(1) : 0;
+                        html += `<tr>
+                            <td>${s.name}</td>
+                            <td>${s.price.toLocaleString()} <span style="opacity:0.6; font-size:0.85em;">(${s.price.toLocaleString()})</span></td>
+                            <td class="fee-cell">-${c.toLocaleString()}</td>
+                            <td class="net-cell">${mg.toLocaleString()}</td>
+                            <td class="net-cell">${rate}%</td>
+                            <td class="net-cell">${dMg.toLocaleString()}</td>
+                            <td class="net-cell">${dRate}%</td>
+                        </tr>`;
+                    });
+                };
+                sec('side'); sec('drink');
+            }
             tbl.innerHTML = html;
         }
 
