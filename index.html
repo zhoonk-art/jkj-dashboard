@@ -1248,26 +1248,22 @@
         <div id="statsView" class="hidden">
             <div class="charts-grid">
                 <div class="chart-card wide">
-                    <h3>📈 일별 매출 추이 (최근 14일)</h3>
-                    <canvas id="trendChart" height="90"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>주별 매출</h3>
-                    <canvas id="weeklyChart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>월별 매출</h3>
-                    <canvas id="monthlyChart"></canvas>
-                </div>
-                <div class="chart-card wide">
                     <h3>🕐 시간대별 평균 주문 건수 (최근 가중, 주문 접수시각 기준)</h3>
                     <div id="hourlyDowFilter" style="display:flex; flex-wrap:wrap; gap:5px; margin:6px 0 10px;"></div>
                     <canvas id="hourlyChart" height="80"></canvas>
                 </div>
-            </div>
-            <div class="orders-section" style="margin-top: 12px;">
-                <h2>📅 월별 매출</h2>
-                <div id="monthList"></div>
+                <div class="chart-card wide">
+                    <h3>📈 일별 매출 추이 (최근 14일)</h3>
+                    <canvas id="trendChart" height="90"></canvas>
+                </div>
+                <div class="chart-card wide">
+                    <h3>📈 주별 매출 추이 (최근 12주)</h3>
+                    <canvas id="weeklyChart" height="85"></canvas>
+                </div>
+                <div class="chart-card wide">
+                    <h3>📈 월별 매출 추이</h3>
+                    <canvas id="monthlyChart" height="85"></canvas>
+                </div>
             </div>
         </div>
 
@@ -2378,27 +2374,9 @@
             const monthly = await loadJson('./processed/monthly_summary.json');
             const index = await loadJson('./processed/archive/archive_index.json');
 
-            const monthList = document.getElementById('monthList');
-            if (!monthly) {
-                monthList.innerHTML = '<div class="empty-note">통계 데이터가 없습니다</div>';
-                return;
-            }
-
-            // 월별 매출 목록 (최신 월이 위로)
+            // 월별 매출은 목록 대신 선그래프로만 본다 (사장님 요청 2026-09-12 — 표는 중복이라 삭제)
+            if (!monthly) return;
             const months = Object.keys(monthly).sort();
-            monthList.innerHTML = [...months].reverse().map(m => {
-                const dayCount = Object.keys(monthly[m].daily_breakdown || {}).length;
-                const avg = dayCount > 0 ? Math.round(monthly[m].month_total / dayCount) : 0;
-                return `
-                    <div class="history-row">
-                        <div class="history-top">
-                            <span class="history-date">${m}</span>
-                            <span class="history-amount">${monthly[m].month_total.toLocaleString()}원</span>
-                        </div>
-                        <div class="history-meta">${monthly[m].orders_count}건 · 영업 ${dayCount}일 · 일평균 ${avg.toLocaleString()}원</div>
-                    </div>
-                `;
-            }).join('');
 
             // 단체주문(이벤트성 선결제 납품) 날짜별 금액 — 평균선 계산에서 제외용 (막대에는 그대로 포함)
             const ppStats = await loadJson('./processed/prepaid.json');
@@ -2479,13 +2457,17 @@
             const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w] - (grpByWeek[w] || 0), 0) / weekDone.length : 0;
 
             drawChart('weeklyChart', {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: weekKeys.map(w => w.replace(/^week_\d+_/, '') + '주차'),
                     datasets: [{
                         label: '주 매출',
                         data: weekKeys.map(w => weekly[w]),
-                        backgroundColor: '#4ecdc4'
+                        borderColor: '#0f9b8e',
+                        backgroundColor: 'rgba(78,205,196,0.18)',
+                        borderWidth: 2.5, fill: true, tension: 0.3,
+                        pointRadius: 4, pointBackgroundColor: '#0f9b8e',
+                        pointBorderColor: '#fff', pointBorderWidth: 2
                     }]
                 },
                 options: {
@@ -2515,13 +2497,17 @@
 
             // 월별 매출
             drawChart('monthlyChart', {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: months,
                     datasets: [{
                         label: '월 매출',
                         data: months.map(m => monthly[m].month_total),
-                        backgroundColor: '#667eea'
+                        borderColor: '#4c51bf',
+                        backgroundColor: 'rgba(102,126,234,0.18)',
+                        borderWidth: 2.5, fill: true, tension: 0.3,
+                        pointRadius: 5, pointBackgroundColor: '#4c51bf',
+                        pointBorderColor: '#fff', pointBorderWidth: 2
                     }]
                 },
                 options: {
