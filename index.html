@@ -1261,7 +1261,7 @@
                     <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="chart-card">
-                    <h3>📈 주별 매출 추이 (최근 12주)</h3>
+                    <h3>📈 주별 매출 추이 (최근 12주 · 그 주 월요일 날짜)</h3>
                     <div class="chart-wrap"><canvas id="weeklyChart"></canvas></div>
                 </div>
                 <div class="chart-card">
@@ -1528,6 +1528,25 @@
                 console.error('로드 실패:', url, error);
                 return null;
             }
+        }
+
+        // "week_2026_37" -> 그 주 월요일 Date.
+        // 아카이브가 ISO 방식(FirstFourDayWeek·월요일 시작)으로 주번호를 매기므로 같은 규칙으로 되돌린다:
+        // 1월 4일이 항상 1주차에 속한다 → 1주차 월요일 = 1/4에서 그 주 월요일까지 되돌린 날.
+        function weekKeyToMonday(key) {
+            const m = String(key).match(/^week_(\d{4})_(\d{1,2})$/);
+            if (!m) return null;
+            const year = +m[1], week = +m[2];
+            const jan4 = new Date(year, 0, 4);
+            const dow = (jan4.getDay() + 6) % 7;              // 월=0 … 일=6
+            const d = new Date(year, 0, 4 - dow);             // 1주차 월요일
+            d.setDate(d.getDate() + (week - 1) * 7);
+            return d;
+        }
+        function weekKeyLabel(key) {
+            const d = weekKeyToMonday(key);
+            if (!d) return String(key).replace(/^week_\d+_/, '') + '주차';
+            return `${d.getMonth() + 1}/${d.getDate()}`;
         }
 
         function drawChart(canvasId, config) {
@@ -2498,10 +2517,16 @@
             const weekDone = weekKeys.slice(0, -1);
             const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w] - (grpByWeek[w] || 0), 0) / weekDone.length : 0;
 
+            const weekRange = i => {
+                const d = weekKeyToMonday(weekKeys[i]);
+                if (!d) return '';
+                const e = new Date(d); e.setDate(e.getDate() + 6);
+                return `${d.getMonth() + 1}/${d.getDate()} ~ ${e.getMonth() + 1}/${e.getDate()}`;
+            };
             drawChart('weeklyChart', {
                 type: 'bar',
                 data: {
-                    labels: weekKeys.map(w => w.replace(/^week_\d+_/, '') + '주차'),
+                    labels: weekKeys.map(weekKeyLabel),
                     datasets: [
                         {
                             label: '주 매출',
