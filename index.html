@@ -401,6 +401,7 @@
            매출·건수·채널 구성은 보여준다(사장님 요청 2026-09-12 — 채널별 건수와 포장/배달 비율이
            현장에 필요). 가리는 건 '돈 계산' 쪽뿐: 마진·원가·인건비·운영비·손익·광고비. */
         body[data-role="staff"] #tab-stats,
+        body[data-role="staff"] #tab-work,
         body[data-role="staff"] #tab-profit,
         body[data-role="staff"] #tab-marketing,
         body[data-role="staff"] #dayNet,
@@ -548,6 +549,44 @@
         }
 
         .cal-cell.empty { border: none; }
+
+        /* ===== 근무 기록 탭 ===== */
+        .cal-cell.work-cell { min-height: 72px; }
+        .cal-cell.work-today { border-color: #501100; border-width: 2px; }
+        .work-day { font-size: 11px; font-weight: 700; color: #888; margin-bottom: 4px; }
+        .work-chip {
+            display: block; margin-bottom: 3px; padding: 2px 6px; border-radius: 4px;
+            font-size: 10.5px; font-weight: 700; color: #fff; letter-spacing: -0.2px;
+        }
+        .work-off { font-size: 10.5px; color: #ccc; }
+        .work-summary {
+            margin-top: 14px; padding: 14px 16px;
+            background: #fbfaf9; border: 1px solid #eee; border-radius: 10px;
+        }
+        .work-sum-title { font-size: 15px; font-weight: 800; color: #501100; margin-bottom: 10px; }
+        .work-sum-sub {
+            font-size: 11.5px; font-weight: 600; color: #fff; background: #8a4a1f;
+            padding: 2px 8px; border-radius: 10px; margin-left: 6px; vertical-align: 2px;
+        }
+        .work-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .work-table th {
+            text-align: right; font-size: 11.5px; color: #999; font-weight: 600;
+            padding: 4px 6px; border-bottom: 1px solid #eee;
+        }
+        .work-table th:first-child { text-align: left; }
+        .work-table td { padding: 7px 6px; text-align: right; border-bottom: 1px solid #f3f3f3; }
+        .work-table td:first-child { text-align: left; font-weight: 600; }
+        .work-dot {
+            display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+            margin-right: 6px; vertical-align: 0;
+        }
+        .work-pay { font-weight: 700; color: #501100; font-variant-numeric: tabular-nums; }
+        .work-todate { color: #2b8a3e; font-variant-numeric: tabular-nums; }
+        .work-sub { font-size: 11px; color: #aaa; font-weight: 400; }
+        .work-table tr.work-total td {
+            border-top: 2px solid #e6ddd6; border-bottom: none;
+            padding-top: 9px; font-weight: 800;
+        }
 
         .cal-cell.closed { background: #fafafa; }
 
@@ -1118,6 +1157,7 @@
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
             <button class="view-tab" id="tab-profit" onclick="showProfit()">재무</button>
+            <button class="view-tab" id="tab-work" onclick="showWork()">근무</button>
             <button class="view-tab" id="tab-marketing" onclick="showMarketing()">전략</button>
             <button class="view-tab" id="tab-prepaidview" onclick="showPrepaidTab()">선결제</button>
         </div>
@@ -1187,6 +1227,20 @@
                     </div>
                 </div>
                 <div id="calendarBox"></div>
+            </div>
+        </div>
+
+        <div id="workView" class="hidden">
+            <div class="orders-section">
+                <div class="cal-header">
+                    <h2>👷 근무 기록 · 급여</h2>
+                    <div class="cal-nav">
+                        <button class="cal-nav-btn" onclick="workMove(-1)">◀</button>
+                        <span id="workTitle"></span>
+                        <button class="cal-nav-btn" onclick="workMove(1)">▶</button>
+                    </div>
+                </div>
+                <div id="workBox"></div>
             </div>
         </div>
 
@@ -1582,7 +1636,7 @@
         }
 
         function showView(viewId) {
-            ['dayView', 'historyView', 'statsView', 'profitView', 'marketingView', 'prepaidView'].forEach(id => {
+            ['dayView', 'historyView', 'statsView', 'profitView', 'workView', 'marketingView', 'prepaidView'].forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', id !== viewId);
             });
         }
@@ -3413,6 +3467,122 @@
             showView('marketingView');
             document.getElementById('comparisonStrip').classList.add('hidden');
             renderMarketing();
+        }
+
+        // ===== 근무 기록 =====
+        // costs.json 의 labor 설정(요일·시간·시급·입퇴사일)에서 근무표를 계산한다.
+        // 실제 출퇴근 기록이 아니라 '예정된 근무' 기준 — 결근·대타는 반영되지 않는다.
+        let workMonth = null;
+
+        function workMove(delta) {
+            workMonth = new Date(workMonth.getFullYear(), workMonth.getMonth() + delta, 1);
+            renderWork();
+        }
+
+        // 그 날짜에 근무하는 사람들 [{short, color, hours, hourly, pay}]
+        function workersOn(iso) {
+            const dow = new Date(iso + 'T00:00:00').getDay();
+            return (costsConfig.labor || []).filter(l => {
+                if (Array.isArray(l.weekdays) && l.weekdays.indexOf(dow) < 0) return false;
+                if (l.start && iso < l.start) return false;
+                if (l.end && iso > l.end) return false;
+                return true;
+            }).map(l => ({
+                short: l.short || l.name, color: l.color || '#868e96',
+                hours: l.hours || 0, hourly: l.hourly || 0,
+                pay: Math.round((l.hourly || 0) * (l.hours || 0))
+            }));
+        }
+
+        async function renderWork() {
+            const box = document.getElementById('workBox');
+            if (!box) return;
+            await loadCosts();
+            if (!costsConfig || !costsConfig.labor) { box.innerHTML = '<div class="empty-note">인건비 설정을 불러오지 못했습니다</div>'; return; }
+            if (!workMonth) { const t = new Date(); workMonth = new Date(t.getFullYear(), t.getMonth(), 1); }
+
+            const y = workMonth.getFullYear(), mo = workMonth.getMonth();
+            const ym = `${y}-${String(mo + 1).padStart(2, '0')}`;
+            document.getElementById('workTitle').textContent = `${y}년 ${mo + 1}월`;
+
+            const lastDay = new Date(y, mo + 1, 0).getDate();
+            const firstDow = new Date(y, mo, 1).getDay();
+            const today = todayStr();
+
+            // 달력
+            const names = ['일', '월', '화', '수', '목', '금', '토'];
+            let html = '<div class="cal-grid">';
+            names.forEach((n, i) => html += `<div class="cal-dayname${i === 0 ? ' sun' : ''}">${n}</div>`);
+            for (let i = 0; i < firstDow; i++) html += '<div class="cal-cell empty"></div>';
+
+            const perPerson = {};   // short -> {color, days, hours, pay, daysToDate, payToDate}
+            let mHours = 0, mPay = 0, mDays = 0, pastPay = 0;
+
+            for (let d = 1; d <= lastDay; d++) {
+                const iso = `${ym}-${String(d).padStart(2, '0')}`;
+                const ws = workersOn(iso);
+                const isPast = iso <= today;
+                let cell = `<div class="cal-cell work-cell${ws.length ? '' : ' closed'}${iso === today ? ' work-today' : ''}">
+                    <div class="work-day">${d}</div>`;
+                if (ws.length) {
+                    mDays++;
+                    ws.forEach(w => {
+                        mHours += w.hours; mPay += w.pay;
+                        if (isPast) pastPay += w.pay;
+                        const p = perPerson[w.short] = perPerson[w.short] || { color: w.color, days: 0, hours: 0, pay: 0, daysToDate: 0, payToDate: 0 };
+                        p.days++; p.hours += w.hours; p.pay += w.pay;
+                        if (isPast) { p.daysToDate++; p.payToDate += w.pay; }
+                        cell += `<div class="work-chip" style="background:${w.color};">${w.short} ${w.hours}h</div>`;
+                    });
+                } else {
+                    cell += '<div class="work-off">휴무</div>';
+                }
+                html += cell + '</div>';
+            }
+            html += '</div>';
+
+            // 이번 달 예상 급여 (만근 기준)
+            const F = n => Math.round(n).toLocaleString();
+            const isCur = ym === today.substring(0, 7);
+            const rows = Object.keys(perPerson).map(k => ({ short: k, ...perPerson[k] }))
+                .sort((a, b) => b.pay - a.pay);
+
+            html += `<div class="work-summary">
+                <div class="work-sum-title">${y}년 ${mo + 1}월 예상 급여 <span class="work-sum-sub">만근 기준</span></div>
+                <table class="work-table">
+                    <tr><th>직원</th><th>근무일</th><th>시간</th><th>급여</th>${isCur ? '<th>오늘까지</th>' : ''}</tr>
+                    ${rows.map(r => `<tr>
+                        <td><span class="work-dot" style="background:${r.color};"></span>${r.short}</td>
+                        <td>${r.days}일</td>
+                        <td>${r.hours}시간</td>
+                        <td class="work-pay">${F(r.pay)}원</td>
+                        ${isCur ? `<td class="work-todate">${F(r.payToDate)}원 <span class="work-sub">(${r.daysToDate}일)</span></td>` : ''}
+                    </tr>`).join('')}
+                    <tr class="work-total">
+                        <td>합계</td>
+                        <td>${mDays}일</td>
+                        <td>${mHours}시간</td>
+                        <td class="work-pay">${F(mPay)}원</td>
+                        ${isCur ? `<td class="work-todate">${F(pastPay)}원</td>` : ''}
+                    </tr>
+                </table>
+                <p class="settings-note" style="margin-top:8px;">
+                    시급에 주휴수당이 포함된 금액입니다. 4대보험·세금은 빠져 있습니다.
+                    ${isCur ? '「오늘까지」는 이 달 1일부터 오늘까지 실제로 근무한 날의 급여이고, 「급여」는 이 달 끝까지 만근했을 때 받아갈 금액입니다.' : ''}
+                    <br>※ 이 표는 근무 설정(요일·시간·시급)에서 계산한 <b>예정 근무</b>입니다 — 결근이나 대타는 반영되지 않습니다.
+                </p>
+            </div>`;
+
+            box.innerHTML = html;
+        }
+
+        function showWork() {
+            if (!guardTab('tab-work')) return;
+            currentMode = 'work';
+            setActiveTab('tab-work');
+            showView('workView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderWork();
         }
 
         // ===== 마케팅 =====
