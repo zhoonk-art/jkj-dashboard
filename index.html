@@ -2394,8 +2394,9 @@
             const cells = [...document.querySelectorAll('#calendarBox .cal-cell.has-data[data-date]')];
             await Promise.all(cells.map(async cell => {
                 const ds = cell.dataset.date;
+                if (ds === todayStr()) return;      // 진행 중인 날은 아직 판정하지 않는다
                 if (!(ds in _dayMarginCache)) {
-                    const od = await loadJson(`./processed/archive/${ds}/orders_${ds.replace(/-/g, '')}.json`);
+                    const od = await loadDayData(ds);
                     if (!od || !od.orders) { _dayMarginCache[ds] = null; return; }
                     let sum = 0;
                     od.orders.filter(o => o && !o.cancelled && !o.prepaid)
