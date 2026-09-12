@@ -2360,7 +2360,11 @@
             // 매출 대비 비중이 큰 순서로 정렬
             const rows = [
                 { name: '재료비', amt: mn.mat },
-                { name: '플랫폼 수수료', amt: fee - adv },   // 광고비는 아래 별도 행
+                {
+                    name: '플랫폼 수수료', amt: fee - adv,   // 광고비는 아래 별도 행
+                    parts: Object.keys(mn.feePlat || {}).filter(k => mn.feePlat[k] > 0)
+                        .sort((a, b) => mn.feePlat[b] - mn.feePlat[a]).map(k => part(k, mn.feePlat[k]))
+                },
                 ...fixedRows,
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
@@ -2411,12 +2415,15 @@
             if (!act.length) { box.innerHTML = ''; return; }
 
             let gross = 0, fee = 0, mat = 0, adBm = 0, adCp = 0;
+            const feePlat = {};    // 플랫폼별 수수료 (광고비 제외 — 광고비는 아래 별도 행)
             act.forEach(o => {
                 const r = orderNet(o, dateStr);
                 gross += o.amount;
                 fee += r.fee;
                 mat += orderCost(o, dateStr);
                 if (String(o.channel || '').indexOf('쿠팡') === 0) adCp += r.ad; else adBm += r.ad;
+                const pf = platformOf(o.channel);
+                feePlat[pf] = (feePlat[pf] || 0) + (r.fee - r.ad);
             });
             const net = gross - fee;                 // 정산 실수령
             const labor = laborForDate(dateStr);
@@ -2434,13 +2441,16 @@
             const bdD = bizDaysInMonth(ymD) || 26;
             const fixedRows = (costsConfig.fixed || []).map(f => ({
                 name: f.name,
-                amt: Math.round(fixedAmountFor(f, ymD).amt / bdD),
-                note: '하루치'
+                amt: Math.round(fixedAmountFor(f, ymD).amt / bdD)
             })).filter(r => r.amt > 0);
 
             const rows = [
                 { name: '재료비', amt: mat },
-                { name: '플랫폼 수수료', amt: fee - adTotal },
+                {
+                    name: '플랫폼 수수료', amt: fee - adTotal,
+                    parts: Object.keys(feePlat).filter(k => feePlat[k] > 0)
+                        .sort((a, b) => feePlat[b] - feePlat[a]).map(k => part(k, feePlat[k]))
+                },
                 { name: '인건비', amt: labor },
                 ...fixedRows,
                 adTotal ? {
@@ -2595,11 +2605,26 @@
                 // 남는 만큼을 다음 입고일에서 깎는다. 재고를 따로 입력받지 않는다.
                 //   남은 닭 = 그날 주문량 − 그날 사용량   (전날 남은 것까지 이어서 굴린다)
                 // 주문 판단에만 10% 여유(BUF)를 얹는다 — 모자라면 그날 장사를 접어야 하므로.
-                let left = 0, totOrder = 0, totNeed = 0;
-                plan.forEach(p => {
-                    p.order = Math.max(0, Math.ceil((p.need * BUF - left) / UNIT) * UNIT);
-                    left = left + p.order - p.need;
-                    p.left = left;
+                // 일요일 마감 뒤 남은 양은 다음 주 화요일로 이어진다 → 주문 패턴이 그대로 반복될
+                // 때까지 한 주를 몇 번 돌려서 안정된 값을 쓴다 (매주 같은 표를 보게 된다).
+                const runWeek = seed => {
+                    let l = seed;
+                    const orders = plan.map(p => {
+                        const o = Math.max(0, Math.ceil((p.need * BUF - l) / UNIT) * UNIT);
+                        l = l + o - p.need;
+                        return o;
+                    });
+                    return { orders: orders, end: l };
+                };
+                let carry = 0, run = runWeek(0);
+                for (let i = 0; i < 10; i++) {
+                    const next = runWeek(run.end);
+                    if (next.orders.join() === run.orders.join()) { carry = run.end; run = next; break; }
+                    carry = run.end; run = next;
+                }
+                let totOrder = 0, totNeed = 0;
+                plan.forEach((p, i) => {
+                    p.order = run.orders[i];
                     totOrder += p.order; totNeed += p.need;
                 });
                 box.innerHTML = `
@@ -2615,7 +2640,8 @@
                             <td class="ord-need">${totNeed.toFixed(1)}kg</td>
                             <td class="ord-kg">${totOrder}kg</td>
                         </tr>
-                    </table>`;
+                    </table>
+                    ${carry >= 1 ? `<div class="ord-note">지난 일요일 남은 약 ${carry.toFixed(0)}kg이 ${plan[0].day}요일로 이어집니다</div>` : ''}`;
             }
 
         }
@@ -2895,6 +2921,18 @@
                 feesConfig = await loadJson('./processed/fees.json');
             }
             return feesConfig;
+        }
+
+        // 결산표에서 수수료·광고비를 묶어 보여줄 때 쓰는 플랫폼 이름
+        // (배민 앱배달·가게배달·포장은 한 플랫폼으로 본다 — 정산도 한 곳에서 들어온다)
+        function platformOf(channel) {
+            const c = String(channel || '');
+            if (c.indexOf('배달의민족') === 0) return '배민';
+            if (c.indexOf('쿠팡') === 0) return '쿠팡';
+            if (c.indexOf('요기요') === 0) return '요기요';
+            if (c.indexOf('땡겨요') === 0) return '땡겨요';
+            if (c.indexOf('네이버') === 0) return '네이버';
+            return '포장';
         }
 
         function feeFor(channel, dateStr) {
@@ -3601,6 +3639,7 @@
             if (ym !== curYm && _monthNetCache[ym]) return _monthNetCache[ym];
             const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
             let gross = 0, net = 0, mat = 0, days = 0, adv = 0, advBm = 0, advCp = 0;
+            const feePlat = {};    // 플랫폼별 수수료 (광고비 제외 — 결산표에서 따로 보여준다)
             const monthDays = idx.filter(x => x.date.substring(0, 7) === ym);
 
             // 매출연동 광고비(쿠팡 등)는 정산에서 수수료와 함께 떼가므로 net에 이미 반영돼 있다.
@@ -3615,12 +3654,15 @@
                 if (!act.length) continue;
                 days++;
                 act.forEach(o => {
+                    const r = orderNet(o, d.date);
                     gross += o.amount;
-                    net += orderNet(o, d.date).net;
+                    net += r.net;
                     mat += orderCost(o, d.date);
-                    const a = advOf(o, d.date);
+                    const a = r.ad;
                     adv += a;
                     if (o.channel.indexOf('배달의민족') === 0) advBm += a; else advCp += a;
+                    const pf = platformOf(o.channel);
+                    feePlat[pf] = (feePlat[pf] || 0) + (r.fee - a);
                 });
             }
 
@@ -3629,15 +3671,18 @@
                 const act = t.orders.filter(o => !o.cancelled && !o.prepaid);
                 if (act.length > 0) days++;
                 act.forEach(o => {
+                    const r = orderNet(o, t.date);
                     gross += o.amount;
-                    net += orderNet(o, t.date).net;
+                    net += r.net;
                     mat += orderCost(o, t.date);
-                    const a = advOf(o, t.date);
+                    const a = r.ad;
                     adv += a;
                     if (o.channel.indexOf('배달의민족') === 0) advBm += a; else advCp += a;
+                    const pf = platformOf(o.channel);
+                    feePlat[pf] = (feePlat[pf] || 0) + (r.fee - a);
                 });
             }
-            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp };
+            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp, feePlat: feePlat };
             if (ym !== curYm) _monthNetCache[ym] = r;
             return r;
         }
