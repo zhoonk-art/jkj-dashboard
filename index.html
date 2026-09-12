@@ -1363,6 +1363,18 @@
                     <h3>📦 발주 추천</h3>
                     <div id="chickenDowNote"></div>
                 </div>
+                <div class="chart-card">
+                    <h3>🍗 주간 닭 사용량</h3>
+                    <div class="chart-wrap"><canvas id="chickenWeekChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3>🧾 월별 관리비</h3>
+                    <div class="chart-wrap"><canvas id="mgmtFeeChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3>🔥 월별 가스비</h3>
+                    <div class="chart-wrap"><canvas id="gasFeeChart"></canvas></div>
+                </div>
             </div>
         </div>
 
@@ -2790,6 +2802,8 @@
             const mstats = await loadJson('./processed/marketing_stats.json');
             window._mstats = mstats;
             renderChickenDow(mstats);
+            renderChickenWeek(mstats);
+            renderUtilCharts();
             if (mstats && (mstats.heat_wavg || mstats.heat_amount)) {
                 window._hourlyHeat = mstats.heat_wavg || mstats.heat_count_3m;
                 renderHourlyDowFilter();
@@ -2838,6 +2852,48 @@
             await renderChannelMonthCharts(monthly, months);
         }
 
+        // 주간 닭 사용량 — 월요일 기준으로 한 주씩 묶어 최근 12주. 진행 중인 주는 뺀다(덜 찬 주라 뚝 떨어져 보인다).
+        function renderChickenWeek(m) {
+            const cd = (m && m.chicken_daily) || null;
+            if (!cd) return;
+            const mondayOf = iso => {
+                const dt = new Date(iso + 'T00:00:00');
+                dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));   // 월=0이 되도록 밀어서 그 주 월요일
+                return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+            };
+            const curWeek = mondayOf(todayStr());
+            const byWeek = {};
+            Object.keys(cd).forEach(d => {
+                const kg = +cd[d];
+                if (!(kg > 0)) return;
+                const w = mondayOf(d);
+                if (w >= curWeek) return;          // 이번 주는 아직 안 끝났다
+                byWeek[w] = (byWeek[w] || 0) + kg;
+            });
+            const keys = Object.keys(byWeek).sort().slice(-12);
+            if (!keys.length) return;
+            const lb = keys.map(k => (+k.substring(5, 7)) + '/' + (+k.substring(8)));
+            drawMonthBarLine('chickenWeekChart', lb,
+                keys.map(k => +byWeek[k].toFixed(1)), 'rgba(138,74,31,0.45)', '#5c3114', 'kg');
+        }
+
+        // 관리비·가스비 월 추이 — costs.json에 사장님이 넣어준 그 달 확정 납부액만 쓴다.
+        // (monthly에 없는 달은 추정값이라 그래프에 섞지 않는다 — 고지서 들어오는 대로 채워진다)
+        async function renderUtilCharts() {
+            await loadCosts();
+            const draw = (canvasId, match) => {
+                const f = (costsConfig.fixed || []).find(x => match.test(x.name));
+                const mo = (f && f.monthly) || null;
+                if (!mo) return;
+                const keys = Object.keys(mo).sort();
+                if (!keys.length) return;
+                drawMonthBarLine(canvasId, keys.map(k => (+k.substring(5)) + '월'),
+                    keys.map(k => mo[k]), 'rgba(102,126,234,0.5)', '#3c40a0', 'won');
+            };
+            draw('mgmtFeeChart', /관리비/);
+            draw('gasFeeChart', /가스/);
+        }
+
         // 채널 묶음 — 배민은 앱배달·가게배달·포장을 한 채널로 본다 (광고비가 한 곳에서 나가므로).
         const CH_GROUPS = {
             bm: ch => ch.indexOf('배달의민족') === 0,
@@ -2876,11 +2932,11 @@
                         legend: { display: false },
                         tooltip: {
                             filter: item => item.datasetIndex === 0,
-                            callbacks: { label: ctx => (ctx.parsed.y || 0).toLocaleString() + (kind === 'cnt' ? '건' : '원') }
+                            callbacks: { label: ctx => (ctx.parsed.y || 0).toLocaleString() + (kind === 'cnt' ? '건' : kind === 'kg' ? 'kg' : '원') }
                         }
                     },
                     scales: {
-                        y: { beginAtZero: true, ticks: { callback: v => kind === 'cnt' ? v + '건' : (v / 10000) + '만' } }
+                        y: { beginAtZero: true, ticks: { callback: v => kind === 'cnt' ? v + '건' : kind === 'kg' ? v + 'kg' : (v / 10000) + '만' } }
                     }
                 }
             });
