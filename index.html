@@ -2196,6 +2196,21 @@
             const index = await loadJson('./processed/archive/archive_index.json');
             archiveByDate = {};
             (index || []).forEach(d => { archiveByDate[d.date] = d; });
+
+            // 오늘은 아직 아카이브 전이므로 실시간 파일에서 끌어와 같은 모양으로 끼워 넣는다
+            const tIso = todayStr();
+            if (!archiveByDate[tIso]) {
+                const t = await loadJson('./processed/orders_latest.json');
+                if (t && t.date === tIso && t.summary && t.summary.total_orders > 0) {
+                    archiveByDate[tIso] = {
+                        date: tIso,
+                        total_amount: t.summary.total_amount || 0,
+                        total_orders: t.summary.total_orders || 0,
+                        takeout_count: t.summary.takeout_count || 0,
+                        delivery_count: t.summary.delivery_count || 0
+                    };
+                }
+            }
             if (!calMonth) {
                 const t = new Date();
                 calMonth = new Date(t.getFullYear(), t.getMonth(), 1);
@@ -2252,7 +2267,7 @@
                 if (rec) {
                     monthTotal += rec.total_amount || 0;
                     html += `
-                        <div class="cal-cell has-data" data-date="${ds}" onclick="showDate('${ds}')">
+                        <div class="cal-cell has-data${ds === today ? ' today' : ''}" data-date="${ds}" onclick="showDate('${ds}')">
                             <div class="cal-date${sunCls}">${d}</div>
                             <div class="cal-amt">${((rec.total_amount || 0) / 10000).toFixed(1)}만</div>
                             <div class="cal-cnt cal-cnt-full">${rec.total_orders}건(내점${rec.takeout_count || 0}, 배달${rec.delivery_count || 0})</div>
