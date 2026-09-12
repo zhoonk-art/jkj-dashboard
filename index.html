@@ -1614,14 +1614,17 @@
                 }
             }
             drawChart('hourlyChart', {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: hLabels,
                     datasets: [{
                         label: '평균 주문 건수',
                         data: hData,
-                        backgroundColor: '#f08c42',
-                        borderRadius: 3
+                        borderColor: '#e07b2c',
+                        backgroundColor: 'rgba(240,140,66,0.18)',
+                        borderWidth: 2.5, fill: true, tension: 0.35,
+                        pointRadius: 3.5, pointBackgroundColor: '#e07b2c',
+                        pointBorderColor: '#fff', pointBorderWidth: 1.5
                     }]
                 },
                 options: {
@@ -2426,14 +2429,17 @@
             const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount - grpOf(d.date), 0) / dailyDone.length : 0;
 
             drawChart('trendChart', {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: daily.map(d => d.date.substring(5)),
                     datasets: [{
                         label: '일 매출 (원)',
                         data: daily.map(d => d.total_amount),
-                        backgroundColor: '#8a4a1f',
-                        borderRadius: 3
+                        borderColor: '#8a4a1f',
+                        backgroundColor: 'rgba(138,74,31,0.16)',
+                        borderWidth: 2.5, fill: true, tension: 0.3,
+                        pointRadius: 4, pointBackgroundColor: '#8a4a1f',
+                        pointBorderColor: '#fff', pointBorderWidth: 2
                     }]
                 },
                 options: {
