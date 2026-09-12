@@ -2309,7 +2309,7 @@
             const bizTot = bizDaysInMonth(ym) || 1;
             const bizEl = isCur ? bizDaysElapsed(ym, upto) : bizTot;
             const proRate = bizTot > 0 ? bizEl / bizTot : 1;
-            const proTag = isCur ? ` <span class="pl-actual">${bizEl}/${bizTot}일치</span>` : '';
+            const proTag = isCur ? ` <span class="pl-actual">${bizEl}/${bizTot}</span>` : '';
 
             let laborWk = 0, laborWknd = 0;
             (costsConfig.labor || []).forEach(l => {
@@ -2361,11 +2361,9 @@
                     ${rows.map(r => {
                         let label = r.name;
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
-                        if (r.est) label += ' <span class="pl-est">추정</span>';
                         if (r.pro) label += proTag;
                         if (r.name === '인건비' && isCur) label += proTag;
-                        if (r.name === '광고비' && adDays) label += ` <span class="pl-actual">실비 ${adDays}일치</span>`;
-                        if (r.name === '광고비' && adEst) label += ' <span class="pl-est">배민 추정</span>' + proTag;
+                        if (r.name === '광고비' && adEst) label += proTag;
                         if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.join(' · ')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
@@ -2380,8 +2378,7 @@
                 <div class="cal-pl-note">
                     영업 ${mn.days}일 · 하루 평균 매출 ${F(mn.gross / mn.days)}원 · 하루 평균 순익 ${F(profit / mn.days)}원 · 세금(부가세·소득세) 내기 전 기준입니다.
                     ${isCur ? `<br>· <b>진행 중인 달</b>이라 운영비는 ${bizEl}/${bizTot} 영업일만큼만 잡았습니다 — 인건비는 실제 근무일을 하루씩 더했고, 월세·관리비 등은 경과 영업일 비율로 일할 계산했습니다.` : ''}
-                    ${anyEst ? '<br>· <span class="pl-est">추정</span> 은 실제 납부액이 아직 입력되지 않아 최근 금액으로 계산한 항목입니다.' : ''}
-                    ${adDays ? '<br>· <span class="pl-actual">실비</span> 는 배민 광고 리포트에 기록된 실제 지출을 그대로 합산한 값입니다.' : ''}
+
                 </div>
             </div>`;
             box.innerHTML = html;
