@@ -2659,7 +2659,10 @@
             const pay = Math.round(order.amount * f.pay / 100);
             const del = f.del;
             const ad = Math.round(order.amount * f.ad / 100);
-            const vat = Math.round((med + pay + del + ad) * 0.1);
+            // 부가세는 중개·결제·배달비에만 붙는다. 광고비에는 안 붙음 —
+            // 쿠팡 정산서가 "부가세 1 (중개이용료·배달비·결제대행사 수수료)"로 명시하고 있고,
+            // 광고비는 부가세까지 포함된 최종 금액으로 차감된다 (2026-09-11 정산서 실측).
+            const vat = Math.round((med + pay + del) * 0.1);
             const fee = med + pay + del + ad + vat;
             return { med: med, pay: pay, del: del, ad: ad, vat: vat, fee: fee, net: order.amount - fee };
         }
@@ -3331,7 +3334,7 @@
 
             // 매출연동 광고비(쿠팡 등)는 정산에서 수수료와 함께 떼가므로 net에 이미 반영돼 있다.
             // 결산표에서 따로 보여주려고 그 몫만 부가세 포함으로 별도 집계한다.
-            const advOf = (o, dateStr) => Math.round(orderNet(o, dateStr).ad * 1.1);
+            const advOf = (o, dateStr) => orderNet(o, dateStr).ad;   // 광고비는 부가세 포함 최종 금액
 
             for (const d of monthDays) {
                 const ymd = d.date.replace(/-/g, '');
