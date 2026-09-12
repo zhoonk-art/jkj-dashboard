@@ -965,6 +965,21 @@
 
         body[data-role="staff"] #prepaidMini { display: none !important; }
 
+        /* 발주 추천량 표 */
+        .ord-title { font-size: 13.5px; font-weight: 800; color: #8a4a1f; margin: 4px 0 6px; }
+        .ord-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .ord-table td { padding: 6px 6px; border-bottom: 1px solid #f2efec; }
+        .ord-day {
+            width: 30px; font-weight: 800; color: #fff; background: #8a4a1f;
+            border-radius: 6px; text-align: center; padding: 4px 0 !important;
+        }
+        .ord-kg { font-weight: 800; color: #501100; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .ord-cnt { color: #999; font-size: 12px; white-space: nowrap; }
+        .ord-use { color: #777; font-size: 12px; text-align: right; }
+        .ord-table tr.ord-total td { border-top: 2px solid #e6ddd6; border-bottom: none; padding-top: 8px; }
+        .ord-table tr.ord-total .ord-day { background: #501100; }
+        .ord-note { font-size: 11.5px; color: #a09890; margin-top: 7px; line-height: 1.5; }
+
         .fee-table tr.menu-sec td {
             background: #f6f2ef;
             font-weight: 700;
@@ -2471,11 +2486,40 @@
             });
 
             if (box) {
-                const tot = avg.reduce((s, v) => s + v, 0);
-                const max = Math.max.apply(null, avg), min = Math.min.apply(null, avg);
-                box.innerHTML = `최근 4주 · 주당 약 <b>${tot.toFixed(1)}kg</b>(${Math.round(tot / 0.7)}마리) · `
-                    + `가장 많은 ${labels[avg.indexOf(max)]}요일 ${max}kg, 가장 적은 ${labels[avg.indexOf(min)]}요일 ${min}kg`;
+                // 발주 추천 — 발주한 날 밤에 주문하면 다음 날 아침 납품되므로 '발주일 = 쓰는 날 전날'.
+                // 목요일만 금·토·일 3일치를 한 번에 받는다 (금·토·일엔 발주하지 않음).
+                // 월요일 휴무라 일요일 발주는 없다.
+                const kgOf = n => { const i = labels.indexOf(n); return i < 0 ? 0 : avg[i]; };
+                const BUF = 1.1;   // 여유 10% — 모자라면 그날 장사를 접어야 하므로 넉넉히 잡는다
+                const plan = [
+                    { day: '월', use: '화요일', kg: kgOf('화') },
+                    { day: '화', use: '수요일', kg: kgOf('수') },
+                    { day: '수', use: '목요일', kg: kgOf('목') },
+                    { day: '목', use: '금·토·일', kg: kgOf('금') + kgOf('토') + kgOf('일') }
+                ];
+                const tot = plan.reduce((s, p) => s + p.kg, 0);
+                box.innerHTML = `
+                    <div class="ord-title">📦 발주 추천량</div>
+                    <table class="ord-table">
+                        ${plan.map(p => {
+                            const k = p.kg * BUF;
+                            return `<tr>
+                                <td class="ord-day">${p.day}</td>
+                                <td class="ord-kg">${k.toFixed(1)}kg</td>
+                                <td class="ord-cnt">약 ${Math.round(k / 0.7)}마리</td>
+                                <td class="ord-use">${p.use}에 쓸 닭</td>
+                            </tr>`;
+                        }).join('')}
+                        <tr class="ord-total">
+                            <td>주</td>
+                            <td class="ord-kg">${(tot * BUF).toFixed(1)}kg</td>
+                            <td class="ord-cnt">약 ${Math.round(tot * BUF / 0.7)}마리</td>
+                            <td class="ord-use">금·토·일은 발주 없음</td>
+                        </tr>
+                    </table>
+                    <div class="ord-note">최근 4주 요일별 평균에 여유 10%를 더한 값입니다. 남은 재고는 빼고 주문하세요.</div>`;
             }
+
         }
 
         // ===== 통계 뷰 =====
