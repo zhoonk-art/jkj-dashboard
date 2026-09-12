@@ -397,20 +397,16 @@
             background: rgba(255,255,255,0.18); color: #fff; cursor: pointer;
         }
 
-        /* ===== 직원 모드: 금액·마진 관련 요소 숨김 ===== */
-        body[data-role="staff"] #tab-history,
+        /* ===== 직원 모드 =====
+           매출·건수·채널 구성은 보여준다(사장님 요청 2026-09-12 — 채널별 건수와 포장/배달 비율이
+           현장에 필요). 가리는 건 '돈 계산' 쪽뿐: 마진·원가·인건비·운영비·손익·광고비. */
         body[data-role="staff"] #tab-stats,
         body[data-role="staff"] #tab-profit,
         body[data-role="staff"] #tab-marketing,
-        body[data-role="staff"] #comparisonStrip,
-        body[data-role="staff"] #card-total,
-        body[data-role="staff"] #card-avg,
-        body[data-role="staff"] #chart-channel,
-        body[data-role="staff"] #chart-typemix,
-        body[data-role="staff"] .order-amount,
         body[data-role="staff"] #dayNet,
-        body[data-role="staff"] #takeoutAmount,
-        body[data-role="staff"] #deliveryAmount { display: none !important; }
+        body[data-role="staff"] #calMonthPL,
+        body[data-role="staff"] #takeoutAmount .margin-note,
+        body[data-role="staff"] #deliveryAmount .margin-note { display: none !important; }
 
         .order-time-channel {
             color: #777;
@@ -1118,7 +1114,7 @@
         <!-- 기간 선택 탭 -->
         <div class="view-tabs">
             <button class="view-tab active" id="tab-today" onclick="showToday()">오늘</button>
-            <button class="view-tab" id="tab-yesterday" onclick="showYesterday()">전일</button>
++
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
             <button class="view-tab" id="tab-profit" onclick="showProfit()">재무</button>
@@ -1381,7 +1377,7 @@
         // 화면을 숨기는 것뿐 아니라 매출 금액 자체가 브라우저로 내려오지 않는다.
         const DASH_PW = { staff: '1118', admin: '1233' };
         const ROLE_LABEL = { staff: '👤 직원', admin: '🔑 관리자' };
-        const STAFF_TABS = ['tab-today', 'tab-yesterday', 'tab-prepaidview'];
+        const STAFF_TABS = ['tab-today', 'tab-history', 'tab-prepaidview'];
         let DASH_ROLE = null;
         let _pendingRole = null;
 
@@ -1451,17 +1447,25 @@
             return true;
         }
 
-        // 직원 모드에서는 ./processed/ 대신 금액을 제거한 ./processed-staff/ 를 읽는다.
-        // 화면만 가리는 게 아니라 매출 금액이 브라우저로 아예 내려오지 않게 하기 위함.
-        function dataUrl(url) {
-            if (DASH_ROLE !== 'staff') return url;
-            return url.replace('./processed/', './processed-staff/');
+        // 관리자 전용 파일 — 원가·수수료·인건비·광고비 등 돈 계산에 쓰는 설정값.
+        // 원격에서는 이 파일들만 관리자 키로 따로 암호화되어 직원 비밀번호로는 복호화되지 않는다.
+        // 주문·아카이브 같은 매출 데이터는 직원도 보므로 굳이 복제하지 않는다.
+        const ADMIN_ONLY_FILES = [
+            'costs.json', 'menu_costs.json', 'fees.json', 'bm_ad_log.json', 'oil_ledger.json',
+            'market_events.json', 'marketing_advice.json', 'marketing_stats.json',
+            'chicken_ledger.json', 'group_orders.json', 'monthly_summary.json'
+        ];
+        function isAdminOnly(url) {
+            const base = String(url).split('/').pop().split('?')[0];
+            return ADMIN_ONLY_FILES.indexOf(base) >= 0;
         }
+        function dataUrl(url) { return url; }
 
         async function loadJson(url) {
             // 로그인 전에는 어떤 데이터도 요청하지 않는다.
             // (10초 폴링·초기 렌더가 로그인 화면 뒤에서 먼저 돌아 404를 내던 것을 막는다)
             if (!DASH_ROLE) return null;
+            if (DASH_ROLE === 'staff' && isAdminOnly(url)) return null;   // 직원에게는 재무 파일 차단
             try {
                 const response = await fetch(dataUrl(url) + '?t=' + Date.now());
                 if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -1867,10 +1871,11 @@
                 // 포장/배달 카드: 금액 옆에 마진률
                 const tRate = byType.takeout.gross > 0 ? (byType.takeout.margin / byType.takeout.gross * 100).toFixed(1) : null;
                 const dRate = byType.delivery.gross > 0 ? (byType.delivery.margin / byType.delivery.gross * 100).toFixed(1) : null;
+                const showRate = DASH_ROLE !== 'staff';   // 마진률은 관리자만
                 document.getElementById('takeoutAmount').textContent =
-                    takeoutAmount.toLocaleString() + '원' + (tRate !== null ? ` · 마진률 ${tRate}%` : '');
+                    takeoutAmount.toLocaleString() + '원' + (showRate && tRate !== null ? ` · 마진률 ${tRate}%` : '');
                 document.getElementById('deliveryAmount').textContent =
-                    deliveryAmount.toLocaleString() + '원' + (dRate !== null ? ` · 마진률 ${dRate}%` : '');
+                    deliveryAmount.toLocaleString() + '원' + (showRate && dRate !== null ? ` · 마진률 ${dRate}%` : '');
             });
 
             // 채널별 차트 (취소 건 제외)
@@ -2179,6 +2184,7 @@
             const token = ++_plToken;
             const box = document.getElementById('calMonthPL');
             if (!box) return;
+            if (DASH_ROLE === 'staff') { box.innerHTML = ''; return; }   // 결산은 관리자 전용
             const ym = y + '-' + String(m + 1).padStart(2, '0');
             box.innerHTML = `<div class="cal-pl-loading">${m + 1}월 결산 계산 중…</div>`;
 
@@ -2283,6 +2289,7 @@
         // 달력의 각 영업일 마진(실수령 − 재료비 − 인건비 − 일할 고정비)을 계산해 적자면 빨간색 표시
         const _dayMarginCache = {};
         async function colorizeCalendarMargins() {
+            if (DASH_ROLE === 'staff') return;   // 마진 판정은 관리자 전용
             await Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]);
             const cells = [...document.querySelectorAll('#calendarBox .cal-cell.has-data[data-date]')];
             await Promise.all(cells.map(async cell => {
@@ -3373,7 +3380,6 @@
         }
 
         function showHistory() {
-            if (!guardTab('tab-history')) return;
             currentMode = 'history';
             setActiveTab('tab-history');
             showView('historyView');
@@ -4029,11 +4035,11 @@
     </script>
 <script>
 // ===== GitHub Pages 원격 모드 =====
-// 계정마다 키가 다르다. 직원 비밀번호로는 관리자 파일(processed/*.enc)이 복호화되지 않으므로,
-// 화면을 가리는 수준이 아니라 데이터 자체에 접근할 수 없다.
-//   관리자(12331233) -> processed/*.enc        (전체 데이터)
-//   직원(1234)       -> processed-staff/*.enc  (금액이 제거된 사본)
-const _encCache = {};
+//   publish/processed/*.enc        <- 직원 키 (주문·아카이브 = 매출 데이터, 직원도 봄)
+//   publish/processed-admin/*.enc  <- 관리자 키 (원가·수수료·인건비·광고비)
+//   publish/keys.enc               <- 관리자 키로 감싼 직원 키. 관리자는 이걸 풀어 두 키를 다 쓴다.
+// 직원 비밀번호로는 processed-admin 을 복호화할 수 없다.
+let _dataKey = null;   // 주문 데이터용 키 (직원 = 본인 비번, 관리자 = keys.enc 에서 꺼냄)
 
 async function _deriveKeyIv(pw, saltBytes) {
     const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -4043,57 +4049,57 @@ async function _deriveKeyIv(pw, saltBytes) {
     return { key: buf.slice(0, 32), iv: buf.slice(32, 48) };
 }
 
-async function _decryptEnc(bytes, pw) {
-    const salt = bytes.slice(0, 16), ct = bytes.slice(16);
-    const ki = await _deriveKeyIv(pw, salt);
+async function _fetchDec(url, pw) {
+    const resp = await fetch(url + '?t=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    const ki = await _deriveKeyIv(pw, bytes.slice(0, 16));
     const aesKey = await crypto.subtle.importKey('raw', ki.key, 'AES-CBC', false, ['decrypt']);
-    const plain = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ki.iv }, aesKey, ct);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ki.iv }, aesKey, bytes.slice(16));
     return JSON.parse(new TextDecoder().decode(plain));
 }
 
-function _encPathFor(url, role) {
-    const base = role === 'staff' ? './processed-staff/' : './processed/';
-    return url.replace('./processed/', base).replace(/\.json$/, '.enc');
-}
-
-// 로그인 검증: 그 계정의 대표 파일이 실제로 복호화되는지로 판단한다
 verifyDashPw = async function (role, pw) {
     try {
-        const resp = await fetch(_encPathFor('./processed/orders_latest.json', role) + '?t=' + Date.now());
-        if (!resp.ok) return false;
-        const bytes = new Uint8Array(await resp.arrayBuffer());
-        await _decryptEnc(bytes, pw);
+        if (role === 'admin') {
+            const keys = await _fetchDec('./keys.enc', pw);   // 관리자 키로 풀려야 관리자
+            _dataKey = keys.dataKey;
+        } else {
+            await _fetchDec('./processed/orders_latest.enc', pw);
+            _dataKey = pw;
+        }
         sessionStorage.setItem('dashpw', pw);
         return true;
     } catch (e) { return false; }
 };
 
 loadJson = async function (url) {
-    const role = DASH_ROLE || 'admin';
+    if (!DASH_ROLE) return null;
     const pw = sessionStorage.getItem('dashpw');
     if (!pw) return null;
-    const encUrl = _encPathFor(url, role);
+    const admin = isAdminOnly(url);
+    if (admin && DASH_ROLE !== 'admin') return null;          // 직원에게는 재무 파일 차단
+    if (!_dataKey) {                                          // 새로고침 후 키 복구
+        try {
+            if (DASH_ROLE === 'admin') { _dataKey = (await _fetchDec('./keys.enc', pw)).dataKey; }
+            else { _dataKey = pw; }
+        } catch (e) { return null; }
+    }
+    const encUrl = admin
+        ? url.replace('./processed/', './processed-admin/').replace(/\.json$/, '.enc')
+        : url.replace(/\.json$/, '.enc');
     try {
-        const resp = await fetch(encUrl + '?t=' + Date.now());
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const bytes = new Uint8Array(await resp.arrayBuffer());
-        return await _decryptEnc(bytes, pw);
+        return await _fetchDec(encUrl, admin ? pw : _dataKey);
     } catch (error) {
         console.error('로드 실패:', encUrl, error);
         return null;
     }
 };
 
-// ★ 이 shim은 본문 스크립트보다 뒤에 실행된다. 세션에 역할이 남아 있으면 bootDash()가
-//   이미 원래(평문) loadJson으로 한 번 그려서 404가 난 상태다. 여기서 다시 그려준다.
-//   비밀번호가 세션에 없으면(다른 탭에서 열었을 때 등) 로그인 화면으로 되돌린다.
+// 본문 스크립트가 먼저 돌아 이미 한 번 그렸을 수 있으므로, 로그인 상태면 다시 그린다
 (function reboot() {
-    if (!DASH_ROLE) return;                       // 아직 로그인 전 — 게이트가 떠 있음
-    if (!sessionStorage.getItem('dashpw')) {      // 역할만 있고 키가 없으면 다시 로그인
-        sessionStorage.removeItem('dashrole');
-        location.reload();
-        return;
-    }
+    if (!DASH_ROLE) return;
+    if (!sessionStorage.getItem('dashpw')) { sessionStorage.removeItem('dashrole'); location.reload(); return; }
     showToday();
 })();
 </script>
