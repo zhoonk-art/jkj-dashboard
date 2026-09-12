@@ -2325,6 +2325,10 @@
             const profit = mn.net - mn.mat - opTotal;
 
             const pct = v => mn.gross > 0 ? (v / mn.gross * 100).toFixed(1) : '0.0';
+
+            // 손익분기 하루 매출 = 그 달 운영비 전액 ÷ 그 달 영업일 ÷ 공헌이익률(매출에서 수수료·재료비 뺀 비율)
+            const contribRate = mn.gross > 0 ? (mn.net - mn.mat) / mn.gross : 0;
+            const beDaily = contribRate > 0 ? Math.round(costsTotal(ym) / bizTot / contribRate) : 0;
             const part = (label, v) => `${label} ${F(v)}원 <span class="pl-parts-pct">${pct(v)}%</span>`;
 
             // 매출 대비 비중이 큰 순서로 정렬
@@ -2362,6 +2366,7 @@
                 </table>
                 <div class="cal-pl-note">
                     영업 ${mn.days}일 · 하루 평균 매출 ${F(mn.gross / mn.days)}원 · 하루 평균 순익 ${F(profit / mn.days)}원 · 세금(부가세·소득세) 내기 전 기준입니다.
+                    ${beDaily ? `<br>· <b>손익분기 하루 매출 ${F(beDaily)}원</b> — 영업 ${bizTot}일 기준. 이만큼 팔아야 본전입니다.` : ''}
                     ${isCur ? `<br>· <b>진행 중인 달</b>이라 운영비는 ${bizEl}/${bizTot} 영업일만큼만 잡았습니다 — 인건비는 실제 근무일을 하루씩 더했고, 월세·관리비 등은 경과 영업일 비율로 일할 계산했습니다.` : ''}
 
                 </div>
