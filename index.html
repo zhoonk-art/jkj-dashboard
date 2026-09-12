@@ -2448,18 +2448,25 @@
             const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount - grpOf(d.date), 0) / dailyDone.length : 0;
 
             drawChart('trendChart', {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: daily.map(d => d.date.substring(5)),
-                    datasets: [{
-                        label: '일 매출 (원)',
-                        data: daily.map(d => d.total_amount),
-                        borderColor: '#8a4a1f',
-                        backgroundColor: 'rgba(138,74,31,0.16)',
-                        borderWidth: 2.5, fill: true, tension: 0.3,
-                        pointRadius: 4, pointBackgroundColor: '#8a4a1f',
-                        pointBorderColor: '#fff', pointBorderWidth: 2
-                    }]
+                    datasets: [
+                        {
+                            label: '일 매출 (원)',
+                            data: daily.map(d => d.total_amount),
+                            backgroundColor: 'rgba(138,74,31,0.45)',
+                            borderRadius: 3, order: 2
+                        },
+                        {
+                            type: 'line', label: '흐름',
+                            data: daily.map(d => d.total_amount),
+                            borderColor: '#5c3114', borderWidth: 1.5,
+                            tension: 0.3, fill: false,
+                            pointRadius: 2.5, pointBackgroundColor: '#5c3114',
+                            pointBorderColor: '#fff', pointBorderWidth: 1, order: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -2468,6 +2475,7 @@
                     plugins: {
                         legend: { display: false },
                         tooltip: {
+                            filter: item => item.datasetIndex === 0,
                             callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` }
                         }
                     },
@@ -2492,18 +2500,25 @@
             const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w] - (grpByWeek[w] || 0), 0) / weekDone.length : 0;
 
             drawChart('weeklyChart', {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: weekKeys.map(w => w.replace(/^week_\d+_/, '') + '주차'),
-                    datasets: [{
-                        label: '주 매출',
-                        data: weekKeys.map(w => weekly[w]),
-                        borderColor: '#0f9b8e',
-                        backgroundColor: 'rgba(78,205,196,0.18)',
-                        borderWidth: 2.5, fill: true, tension: 0.3,
-                        pointRadius: 4, pointBackgroundColor: '#0f9b8e',
-                        pointBorderColor: '#fff', pointBorderWidth: 2
-                    }]
+                    datasets: [
+                        {
+                            label: '주 매출',
+                            data: weekKeys.map(w => weekly[w]),
+                            backgroundColor: 'rgba(78,205,196,0.5)',
+                            borderRadius: 3, order: 2
+                        },
+                        {
+                            type: 'line', label: '흐름',
+                            data: weekKeys.map(w => weekly[w]),
+                            borderColor: '#0b7c71', borderWidth: 1.5,
+                            tension: 0.3, fill: false,
+                            pointRadius: 2.5, pointBackgroundColor: '#0b7c71',
+                            pointBorderColor: '#fff', pointBorderWidth: 1, order: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -2511,7 +2526,7 @@
                     avgLine: { value: weeklyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
@@ -2532,18 +2547,25 @@
 
             // 월별 매출
             drawChart('monthlyChart', {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: months,
-                    datasets: [{
-                        label: '월 매출',
-                        data: months.map(m => monthly[m].month_total),
-                        borderColor: '#4c51bf',
-                        backgroundColor: 'rgba(102,126,234,0.18)',
-                        borderWidth: 2.5, fill: true, tension: 0.3,
-                        pointRadius: 5, pointBackgroundColor: '#4c51bf',
-                        pointBorderColor: '#fff', pointBorderWidth: 2
-                    }]
+                    datasets: [
+                        {
+                            label: '월 매출',
+                            data: months.map(m => monthly[m].month_total),
+                            backgroundColor: 'rgba(102,126,234,0.5)',
+                            borderRadius: 3, order: 2
+                        },
+                        {
+                            type: 'line', label: '흐름',
+                            data: months.map(m => monthly[m].month_total),
+                            borderColor: '#3c40a0', borderWidth: 1.5,
+                            tension: 0.3, fill: false,
+                            pointRadius: 3, pointBackgroundColor: '#3c40a0',
+                            pointBorderColor: '#fff', pointBorderWidth: 1, order: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -2551,7 +2573,7 @@
                     avgLine: { value: monthlyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
