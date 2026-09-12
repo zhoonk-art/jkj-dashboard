@@ -348,6 +348,70 @@
             background: #4ecdc4;
         }
 
+        /* ===== 로그인 게이트 ===== */
+        #loginGate {
+            position: fixed; inset: 0; z-index: 9999;
+            background: linear-gradient(160deg, #501100 0%, #7a2408 100%);
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        #loginGate.hidden { display: none; }
+        .login-box {
+            width: 100%; max-width: 340px; background: #fff; border-radius: 18px;
+            padding: 28px 24px 24px; text-align: center;
+            box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+        }
+        .login-logo { font-size: 38px; line-height: 1; }
+        .login-title { font-size: 19px; font-weight: 800; color: #501100; margin: 8px 0 18px; }
+        .login-sub { font-size: 13px; color: #888; margin-bottom: 14px; }
+        .login-role {
+            display: flex; align-items: center; gap: 12px; width: 100%;
+            padding: 14px 16px; margin-bottom: 10px; cursor: pointer; text-align: left;
+            border: 1.5px solid #e6ddd6; border-radius: 12px; background: #fdfbfa;
+            font-family: inherit; transition: border-color .12s, background .12s;
+        }
+        .login-role:hover { border-color: #501100; background: #fff6f1; }
+        .login-role.admin:hover { border-color: #8a4a1f; }
+        .login-role-ic { font-size: 22px; }
+        .login-role b { display: block; font-size: 15px; color: #333; }
+        .login-role small { display: block; font-size: 11.5px; color: #999; margin-top: 2px; }
+        #loginPw {
+            width: 100%; padding: 13px 14px; font-size: 17px; text-align: center;
+            letter-spacing: 4px; border: 1.5px solid #ddd; border-radius: 10px;
+            font-family: inherit; margin-bottom: 10px;
+        }
+        #loginPw:focus { outline: none; border-color: #501100; }
+        .login-go {
+            width: 100%; padding: 13px; font-size: 15px; font-weight: 700; cursor: pointer;
+            border: none; border-radius: 10px; background: #501100; color: #fff; font-family: inherit;
+        }
+        .login-back {
+            width: 100%; padding: 10px; margin-top: 8px; font-size: 12.5px; cursor: pointer;
+            border: none; background: none; color: #999; font-family: inherit;
+        }
+        .login-err { font-size: 12.5px; color: #e03131; min-height: 18px; margin-bottom: 4px; }
+
+        /* 현재 계정 표시 */
+        .role-chip {
+            display: inline-flex; align-items: center; gap: 5px; margin-left: 10px;
+            padding: 3px 10px; border-radius: 12px; font-size: 11.5px; font-weight: 700;
+            background: rgba(255,255,255,0.18); color: #fff; cursor: pointer;
+        }
+
+        /* ===== 직원 모드: 금액·마진 관련 요소 숨김 ===== */
+        body[data-role="staff"] #tab-history,
+        body[data-role="staff"] #tab-stats,
+        body[data-role="staff"] #tab-profit,
+        body[data-role="staff"] #tab-marketing,
+        body[data-role="staff"] #comparisonStrip,
+        body[data-role="staff"] #card-total,
+        body[data-role="staff"] #card-avg,
+        body[data-role="staff"] #chart-channel,
+        body[data-role="staff"] #chart-typemix,
+        body[data-role="staff"] .order-amount,
+        body[data-role="staff"] #dayNet,
+        body[data-role="staff"] #takeoutAmount,
+        body[data-role="staff"] #deliveryAmount { display: none !important; }
+
         .order-time-channel {
             color: #777;
             font-size: 12px;
@@ -1018,9 +1082,36 @@
     </style>
 </head>
 <body>
+    <!-- ===== 로그인 게이트 (직원 / 관리자) ===== -->
+    <div id="loginGate">
+        <div class="login-box">
+            <div class="login-logo">🍗</div>
+            <div class="login-title">정강정 Dashboard</div>
+            <div id="loginRolePick">
+                <div class="login-sub">어느 계정으로 들어가시겠어요?</div>
+                <button class="login-role" onclick="pickRole('staff')">
+                    <span class="login-role-ic">👤</span>
+                    <span><b>직원</b><small>주문 확인 · 선결제 납품</small></span>
+                </button>
+                <button class="login-role admin" onclick="pickRole('admin')">
+                    <span class="login-role-ic">🔑</span>
+                    <span><b>관리자</b><small>매출 · 재무 · 전략 전체</small></span>
+                </button>
+            </div>
+            <div id="loginPwStep" style="display:none;">
+                <div class="login-sub" id="loginPwLabel"></div>
+                <input type="password" id="loginPw" inputmode="numeric" autocomplete="off"
+                       placeholder="비밀번호" onkeydown="if(event.key==='Enter')submitLogin()">
+                <div class="login-err" id="loginErr"></div>
+                <button class="login-go" onclick="submitLogin()">들어가기</button>
+                <button class="login-back" onclick="backToRole()">← 계정 다시 선택</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header>
-            <h1>🍗 정강정 Dashboard</h1>
+            <h1>🍗 정강정 Dashboard <span class="role-chip" id="roleChip" onclick="logoutDash()" title="클릭하면 로그아웃"></span></h1>
             <div class="date-time" id="dateTime"></div>
         </header>
 
@@ -1041,7 +1132,7 @@
         <!-- 일별 뷰 (오늘/어제/특정 날짜) -->
         <div id="dayView">
             <div class="summary-grid">
-                <div class="summary-card total-amount">
+                <div class="summary-card total-amount" id="card-total">
                     <h3>총 매출</h3>
                     <div class="summary-value" id="totalAmount">0원</div>
                     <div class="summary-unit" id="dayNet" style="color: rgba(255,255,255,0.85);"></div>
@@ -1060,7 +1151,7 @@
                     <div class="summary-value" id="deliveryOrders">0건</div>
                     <div class="summary-unit" id="deliveryAmount">0원</div>
                 </div>
-                <div class="summary-card">
+                <div class="summary-card" id="card-avg">
                     <h3>평균 객단가</h3>
                     <div class="summary-value" id="avgOrderValue">0원</div>
                     <div class="summary-unit">주문 1건당 평균</div>
@@ -1068,11 +1159,11 @@
             </div>
 
             <div class="charts-grid day-charts">
-                <div class="chart-card">
+                <div class="chart-card" id="chart-typemix">
                     <h3>포장 vs 배달</h3>
                     <canvas id="typeChart"></canvas>
                 </div>
-                <div class="chart-card">
+                <div class="chart-card" id="chart-channel">
                     <h3>채널별 매출</h3>
                     <canvas id="channelChart"></canvas>
                 </div>
@@ -1283,9 +1374,93 @@
             return fmtDate(d);
         }
 
+        // ===== 계정 분리 (직원 / 관리자) =====
+        // 로컬은 여기서 비밀번호를 직접 확인하고, 원격(GitHub Pages)은 index.html에 붙는
+        // 복호화 shim이 이 함수들을 덮어써서 '비밀번호로 복호화가 되면 통과'하는 방식으로 검증한다.
+        // 직원 모드는 금액이 제거된 별도 데이터(processed-staff)를 읽으므로,
+        // 화면을 숨기는 것뿐 아니라 매출 금액 자체가 브라우저로 내려오지 않는다.
+        const DASH_PW = { staff: '1234', admin: '12331233' };
+        const ROLE_LABEL = { staff: '👤 직원', admin: '🔑 관리자' };
+        const STAFF_TABS = ['tab-today', 'tab-yesterday', 'tab-prepaidview'];
+        let DASH_ROLE = null;
+        let _pendingRole = null;
+
+        function pickRole(role) {
+            _pendingRole = role;
+            document.getElementById('loginRolePick').style.display = 'none';
+            document.getElementById('loginPwStep').style.display = '';
+            document.getElementById('loginPwLabel').textContent =
+                (role === 'staff' ? '직원' : '관리자') + ' 비밀번호를 입력하세요';
+            document.getElementById('loginErr').textContent = '';
+            const pw = document.getElementById('loginPw');
+            pw.value = ''; setTimeout(() => pw.focus(), 50);
+        }
+
+        function backToRole() {
+            _pendingRole = null;
+            document.getElementById('loginRolePick').style.display = '';
+            document.getElementById('loginPwStep').style.display = 'none';
+        }
+
+        // 원격 모드에서는 shim이 이 함수를 교체한다 (복호화 성공 여부로 검증)
+        async function verifyDashPw(role, pw) {
+            return pw === DASH_PW[role];
+        }
+
+        async function submitLogin() {
+            const pw = document.getElementById('loginPw').value.trim();
+            const err = document.getElementById('loginErr');
+            if (!pw) { err.textContent = '비밀번호를 입력하세요'; return; }
+            err.textContent = '확인 중…';
+            const ok = await verifyDashPw(_pendingRole, pw);
+            if (!ok) {
+                err.textContent = '비밀번호가 틀렸습니다';
+                document.getElementById('loginPw').value = '';
+                return;
+            }
+            try { sessionStorage.setItem('dashrole', _pendingRole); } catch (e) { }
+            applyRole(_pendingRole);
+        }
+
+        function applyRole(role) {
+            DASH_ROLE = role;
+            document.body.setAttribute('data-role', role);
+            document.getElementById('loginGate').classList.add('hidden');
+            const chip = document.getElementById('roleChip');
+            if (chip) chip.textContent = ROLE_LABEL[role] || '';
+            // 직원에게 허용되지 않은 탭이 열려 있으면 오늘로 되돌린다
+            if (role === 'staff') {
+                document.querySelectorAll('.view-tab').forEach(b => {
+                    if (STAFF_TABS.indexOf(b.id) < 0) b.style.display = 'none';
+                });
+            }
+            showToday();
+        }
+
+        function logoutDash() {
+            try { sessionStorage.removeItem('dashrole'); sessionStorage.removeItem('dashpw'); } catch (e) { }
+            location.reload();
+        }
+
+        // 직원이 주소로 직접 접근하는 것을 막는 최소 가드
+        function guardTab(tabId) {
+            if (DASH_ROLE === 'staff' && STAFF_TABS.indexOf(tabId) < 0) {
+                alert('관리자만 볼 수 있는 화면입니다.');
+                return false;
+            }
+            return true;
+        }
+
+        // 직원 모드에서는 ./processed/ 대신 금액을 제거한 ./processed-staff/ 를 읽는다.
+        // 화면만 가리는 게 아니라 매출 금액이 브라우저로 아예 내려오지 않게 하기 위함.
+        function dataUrl(url) {
+            if (DASH_ROLE !== 'staff') return url;
+            return url.replace('./processed/', './processed-staff/');
+        }
+
         async function loadJson(url) {
             try {
-                const response = await fetch(url + '?t=' + Date.now());
+                const response = await fetch(dataUrl(url) + '?t=' + Date.now());
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 return await response.json();
             } catch (error) {
@@ -3195,6 +3370,7 @@
         }
 
         function showHistory() {
+            if (!guardTab('tab-history')) return;
             currentMode = 'history';
             setActiveTab('tab-history');
             showView('historyView');
@@ -3203,6 +3379,7 @@
         }
 
         function showStats() {
+            if (!guardTab('tab-stats')) return;
             currentMode = 'stats';
             setActiveTab('tab-stats');
             showView('statsView');
@@ -3211,6 +3388,7 @@
         }
 
         function showProfit() {
+            if (!guardTab('tab-profit')) return;
             currentMode = 'profit';
             setActiveTab('tab-profit');
             showView('profitView');
@@ -3219,6 +3397,7 @@
         }
 
         function showMarketing() {
+            if (!guardTab('tab-marketing')) return;
             currentMode = 'marketing';
             setActiveTab('tab-marketing');
             showView('marketingView');
@@ -3825,7 +4004,13 @@
 
         // ===== 초기 로드 + 자동 갱신 =====
         let lastDataSignature = null;
-        showToday();
+        // 부트스트랩: 이전에 로그인한 역할이 세션에 남아 있으면 그대로 이어간다
+        (function bootDash() {
+            let saved = null;
+            try { saved = sessionStorage.getItem('dashrole'); } catch (e) { }
+            if (saved === 'staff' || saved === 'admin') applyRole(saved);
+            // 저장된 역할이 없으면 #loginGate 가 그대로 떠 있고, 로그인해야 showToday()가 돈다
+        })();
 
         setInterval(async () => {
             // '오늘' 화면일 때만, 그리고 데이터가 실제로 바뀌었을 때만 다시 그림
@@ -3840,14 +4025,14 @@
         }, 10000);
     </script>
 <script>
-// ===== GitHub Pages 원격 모드: 암호화된 데이터(.enc)를 비밀번호로 복호화 =====
-async function getDashKeyIv(saltBytes) {
-    let pw = sessionStorage.getItem('dashpw');
-    if (!pw) {
-        pw = prompt('대시보드 비밀번호를 입력하세요');
-        if (!pw) throw new Error('비밀번호 없음');
-        sessionStorage.setItem('dashpw', pw);
-    }
+// ===== GitHub Pages 원격 모드 =====
+// 계정마다 키가 다르다. 직원 비밀번호로는 관리자 파일(processed/*.enc)이 복호화되지 않으므로,
+// 화면을 가리는 수준이 아니라 데이터 자체에 접근할 수 없다.
+//   관리자(12331233) -> processed/*.enc        (전체 데이터)
+//   직원(1234)       -> processed-staff/*.enc  (금액이 제거된 사본)
+const _encCache = {};
+
+async function _deriveKeyIv(pw, saltBytes) {
     const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
         { name: 'PBKDF2', salt: saltBytes, iterations: 50000, hash: 'SHA-256' }, baseKey, 384);
@@ -3855,33 +4040,46 @@ async function getDashKeyIv(saltBytes) {
     return { key: buf.slice(0, 32), iv: buf.slice(32, 48) };
 }
 
-loadJson = async function(url) {
+async function _decryptEnc(bytes, pw) {
+    const salt = bytes.slice(0, 16), ct = bytes.slice(16);
+    const ki = await _deriveKeyIv(pw, salt);
+    const aesKey = await crypto.subtle.importKey('raw', ki.key, 'AES-CBC', false, ['decrypt']);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ki.iv }, aesKey, ct);
+    return JSON.parse(new TextDecoder().decode(plain));
+}
+
+function _encPathFor(url, role) {
+    const base = role === 'staff' ? './processed-staff/' : './processed/';
+    return url.replace('./processed/', base).replace(/\.json$/, '.enc');
+}
+
+// 로그인 검증: 그 계정의 대표 파일이 실제로 복호화되는지로 판단한다
+verifyDashPw = async function (role, pw) {
     try {
-        const encUrl = url.replace(/\.json$/, '.enc');
+        const resp = await fetch(_encPathFor('./processed/orders_latest.json', role) + '?t=' + Date.now());
+        if (!resp.ok) return false;
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        await _decryptEnc(bytes, pw);
+        sessionStorage.setItem('dashpw', pw);
+        return true;
+    } catch (e) { return false; }
+};
+
+loadJson = async function (url) {
+    const role = DASH_ROLE || 'admin';
+    const pw = sessionStorage.getItem('dashpw');
+    if (!pw) return null;
+    const encUrl = _encPathFor(url, role);
+    try {
         const resp = await fetch(encUrl + '?t=' + Date.now());
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = new Uint8Array(await resp.arrayBuffer());
-        const salt = data.slice(0, 16);
-        const ct = data.slice(16);
-        try {
-            const ki = await getDashKeyIv(salt);
-            const aesKey = await crypto.subtle.importKey('raw', ki.key, 'AES-CBC', false, ['decrypt']);
-            const plain = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ki.iv }, aesKey, ct);
-            return JSON.parse(new TextDecoder().decode(plain));
-        } catch (e) {
-            // 비밀번호가 틀리면 지우고 다시 물어봄
-            sessionStorage.removeItem('dashpw');
-            alert('비밀번호가 틀렸습니다. 다시 입력해주세요.');
-            return loadJson(url);
-        }
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        return await _decryptEnc(bytes, pw);
     } catch (error) {
-        console.error('로드 실패:', url, error);
+        console.error('로드 실패:', encUrl, error);
         return null;
     }
 };
-
-// 원격 모드로 처음부터 다시 렌더링
-showToday();
 </script>
 </body>
 </html>
