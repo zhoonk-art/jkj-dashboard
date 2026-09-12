@@ -2460,11 +2460,12 @@
                 const kgOf = n => { const i = labels.indexOf(n); return i < 0 ? 0 : avg[i]; };
                 const BUF = 1.1;    // 여유 10% — 모자라면 그날 장사를 접어야 하므로
                 const UNIT = 10;    // 발주 단위 kg
+                // day = 닭이 들어오는 날(= 쓰기 시작하는 날). 발주는 그 전날 밤에 넣는다.
                 const plan = [
-                    { day: '월', use: '화', need: kgOf('화') },
-                    { day: '화', use: '수', need: kgOf('수') },
-                    { day: '수', use: '목', need: kgOf('목') },
-                    { day: '목', use: '금·토·일', need: kgOf('금') + kgOf('토') + kgOf('일') }
+                    { day: '화', need: kgOf('화') },
+                    { day: '수', need: kgOf('수') },
+                    { day: '목', need: kgOf('목') },
+                    { day: '금', need: kgOf('금') + kgOf('토') + kgOf('일') }   // 금·토·일 3일치
                 ];
                 let left = 0, totOrder = 0, totNeed = 0;
                 plan.forEach(p => {
@@ -2476,12 +2477,12 @@
                 });
                 box.innerHTML = `
                     <table class="ord-table">
-                        <tr class="ord-head"><td>발주</td><td>주문량</td><td>필요량</td><td>쓰는 날</td></tr>
+                        <tr class="ord-head"><td>입고</td><td>주문량</td><td>필요량</td><td>마리</td></tr>
                         ${plan.map(p => `<tr>
                             <td class="ord-day">${p.day}</td>
                             <td class="ord-kg">${p.order}kg</td>
                             <td class="ord-need">${p.needBuf.toFixed(1)}kg</td>
-                            <td class="ord-use">${p.use}</td>
+                            <td class="ord-use">약 ${Math.round(p.order / 0.7)}마리</td>
                         </tr>`).join('')}
                         <tr class="ord-total">
                             <td>주</td>
@@ -2490,7 +2491,7 @@
                             <td class="ord-use">약 ${Math.round(totOrder / 0.7)}마리</td>
                         </tr>
                     </table>
-                    <div class="ord-note">최근 4주 요일별 평균 + 여유 10%를 10kg 단위로 올린 값입니다. 올려서 남은 양은 다음 발주에서 빼두었으니, <b>실제 남은 재고만 추가로 빼고</b> 주문하세요.</div>`;
+                    <div class="ord-note">요일은 <b>닭이 들어오는 날</b>입니다 — 발주는 그 전날 밤에 넣으세요. 금요일 것은 금·토·일 3일치입니다.<br>최근 4주 요일별 평균 + 여유 10%를 10kg 단위로 올렸고, 올려서 남는 양은 다음 발주에서 빼두었습니다. <b>실제 남은 재고만 추가로 빼고</b> 주문하세요.</div>`;
             }
 
         }
