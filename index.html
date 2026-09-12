@@ -1613,26 +1613,45 @@
                     hData.push(heat[dowSel][h]);
                 }
             }
+            // 막대 + 얇은 추세선 겹쳐 그리기 (시간대별 크기는 막대로, 흐름은 선으로)
             drawChart('hourlyChart', {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: hLabels,
-                    datasets: [{
-                        label: '평균 주문 건수',
-                        data: hData,
-                        borderColor: '#e07b2c',
-                        backgroundColor: 'rgba(240,140,66,0.18)',
-                        borderWidth: 2.5, fill: true, tension: 0.35,
-                        pointRadius: 3.5, pointBackgroundColor: '#e07b2c',
-                        pointBorderColor: '#fff', pointBorderWidth: 1.5
-                    }]
+                    datasets: [
+                        {
+                            label: '평균 주문 건수',
+                            data: hData,
+                            backgroundColor: 'rgba(240,140,66,0.5)',
+                            borderRadius: 3,
+                            order: 2
+                        },
+                        {
+                            type: 'line',
+                            label: '흐름',
+                            data: hData,
+                            borderColor: '#a8481a',
+                            borderWidth: 1.5,
+                            tension: 0.35,
+                            fill: false,
+                            pointRadius: 2.5,
+                            pointBackgroundColor: '#a8481a',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1,
+                            order: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     animation: false,
                     plugins: {
                         legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => `평균 ${(ctx.parsed.y || 0).toFixed(1)}건` } }
+                        // 같은 값을 두 번 그리므로 툴팁은 막대 것만 보여준다
+                        tooltip: {
+                            filter: item => item.datasetIndex === 0,
+                            callbacks: { label: ctx => `평균 ${(ctx.parsed.y || 0).toFixed(1)}건` }
+                        }
                     },
                     scales: { y: { ticks: { callback: v => v + '건' } } }
                 }
