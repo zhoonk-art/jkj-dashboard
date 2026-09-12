@@ -837,12 +837,11 @@
             font-weight: normal;
         }
 
-        .pl-actual {
-            font-size: 10.5px;
-            color: #fff;
-            background: #6f9e6a;
-            border-radius: 7px;
-            padding: 1px 5px;
+        /* 일할 표시 — 부가 정보라 눈에 띄지 않게 흐린 글씨로만 */
+        .pl-pro {
+            font-size: 11px;
+            font-weight: 400;
+            color: #b5aca4;
         }
 
         .cal-pl-note {
@@ -2309,7 +2308,7 @@
             const bizTot = bizDaysInMonth(ym) || 1;
             const bizEl = isCur ? bizDaysElapsed(ym, upto) : bizTot;
             const proRate = bizTot > 0 ? bizEl / bizTot : 1;
-            const proTag = isCur ? ` <span class="pl-actual">${bizEl}/${bizTot}</span>` : '';
+            const proTag = isCur ? ` <span class="pl-pro">[${bizEl}/${bizTot}]</span>` : '';
 
             let laborWk = 0, laborWknd = 0;
             (costsConfig.labor || []).forEach(l => {
