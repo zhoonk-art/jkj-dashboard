@@ -1289,23 +1289,6 @@
                 </div>
             </div>
 
-            <div class="summary-grid profit-summary" style="margin-top: 12px;">
-                <div class="summary-card">
-                    <h3>이번 달 실수령 누계</h3>
-                    <div class="summary-value" id="monthNet">-</div>
-                    <div class="summary-unit" id="monthNetSub"></div>
-                </div>
-                <div class="summary-card">
-                    <h3>월 운영비</h3>
-                    <div class="summary-value" id="monthCosts" style="color: #e03131;">-</div>
-                    <div class="summary-unit">아래에서 수정 가능</div>
-                </div>
-                <div class="summary-card total-amount">
-                    <h3>이번 달 손익 (진행 중)</h3>
-                    <div class="summary-value" id="monthProfit">-</div>
-                    <div class="summary-unit" id="breakEvenInfo" style="color: rgba(255,255,255,0.85);"></div>
-                </div>
-            </div>
 
             <div class="orders-section" style="margin-bottom: 12px;">
                 <h2>🧾 월 운영비 설정</h2>
@@ -2718,8 +2701,6 @@
             await loadCosts();
             renderCostSettings();
             renderMenuCostSettings();
-            const mc = costsAccrued();                 // 손익 계산엔 '지금까지 발생한' 운영비
-            document.getElementById('monthCosts').textContent = costsTotal().toLocaleString() + '원';
 
             if (!data) return;
 
@@ -2748,25 +2729,6 @@
                 `<p class="settings-note" style="margin-top:8px;">부가세는 네 항목 합계의 10%로 자동 계산됩니다. 광고%는 매출연동 광고(쿠팡 등)에만 사용하세요.</p>`;
 
 
-            const m = await calcMonthNet();
-            document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
-            document.getElementById('monthNetSub').textContent =
-                `영업 ${m.days}일 · 매출 ${m.gross.toLocaleString()}원 · 재료비 -${m.mat.toLocaleString()}원`;
-
-            // 진짜 손익 = 실수령(수수료 차감) − 재료비 − 월 운영비(월세·관리비·가스·광고·인건비). 세금 전 기준.
-            const profit = m.net - m.mat - mc;
-            document.getElementById('monthProfit').textContent =
-                (profit >= 0 ? '+' : '') + profit.toLocaleString() + '원';
-            // 이 달의 실제 영업일 수 = 총 일수 − 월요일(휴무) 수
-            const bizNow = new Date();
-            const bizY = bizNow.getFullYear(), bizM = bizNow.getMonth();
-            const bizTotal = new Date(bizY, bizM + 1, 0).getDate();
-            const bizDays = bizDaysInMonth(todayStr().substring(0, 7));
-            const marginRate = m.gross > 0 ? (m.net - m.mat) / m.gross : 0.45;
-            // 손익분기는 한 달 전액 운영비로 계산한다 (mc는 오늘까지 발생분이라 쓰면 안 됨)
-            const dailyNeed = marginRate > 0 ? Math.round(costsTotal() / bizDays / marginRate) : 0;
-            document.getElementById('breakEvenInfo').textContent =
-                `수수료·재료비·운영비 다 뺀 세전 손익 · 손익분기 하루 매출 약 ${dailyNeed.toLocaleString()}원 (${bizM + 1}월 영업일 ${bizDays}일 / 총 ${bizTotal}일${bizTotal > bizDays ? ` − 휴무 ${bizTotal - bizDays}일` : ' · 휴무 없음'})`;
         }
 
         // ===== 재료비 (메뉴별 원가) =====
@@ -3402,7 +3364,6 @@
 
         function renderProfitCosts() {
             costsConfig = collectCostsFromForm();
-            document.getElementById('monthCosts').textContent = costsTotal().toLocaleString() + '원';
             renderCostSettings();
         }
 
