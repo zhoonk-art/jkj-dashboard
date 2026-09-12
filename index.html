@@ -2326,22 +2326,16 @@
 
             // 고정비에서 배민 광고비는 빼내어 쿠팡 광고비와 합친다 (청구 방식만 다를 뿐 같은 광고비)
             const fixedRows = [];
-            let bmAd = 0, anyEst = false, adDays = null, adEst = false;
+            let anyEst = false;
             (costsConfig.fixed || []).forEach(f => {
                 const a = fixedAmountFor(f, ym);
                 if (!a.amt) return;
-                if (/광고/.test(f.name)) {
-                    // 광고 리포트 실지출이 있으면 그대로, 아직 없어 추정치를 쓰는 달이면 일할한다
-                    bmAd += a.est ? Math.round(a.amt * proRate) : a.amt;
-                    if (a.actualDays) adDays = a.actualDays;
-                    if (a.est) { anyEst = true; adEst = true; }
-                    return;
-                }
+                if (/광고/.test(f.name)) { return; }   // 광고비는 채널 수수료(ad_pct)로 빠지므로 고정비에 없다
                 if (a.est) anyEst = true;
                 fixedRows.push({ name: f.name, amt: Math.round(a.amt * proRate), est: a.est, pro: isCur });
             });
-            const adTotal = bmAd + adv;
-            const opTotal = fixedRows.reduce((s, r) => s + r.amt, 0) + bmAd + laborTotal;
+            const adTotal = adv;             // 배민·쿠팡 모두 주문별 수수료에서 차감됨
+            const opTotal = fixedRows.reduce((s, r) => s + r.amt, 0) + laborTotal;
             const profit = mn.net - mn.mat - opTotal;
 
             const pct = v => mn.gross > 0 ? (v / mn.gross * 100).toFixed(1) : '0.0';
@@ -2354,12 +2348,12 @@
             // 매출 대비 비중이 큰 순서로 정렬
             const rows = [
                 { name: '재료비', amt: mn.mat },
-                { name: '플랫폼 수수료', amt: fee - adv },
+                { name: '플랫폼 수수료', amt: fee - adv },   // 광고비는 아래 별도 행
                 ...fixedRows,
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
                 adTotal ? { name: '광고비', amt: adTotal,
-                    parts: [bmAd ? part('배민', bmAd) : null, adv ? part('쿠팡', adv) : null].filter(Boolean) } : null
+                    parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advCp ? part('쿠팡', mn.advCp) : null].filter(Boolean) } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
 
             let html = `<div class="cal-pl">
@@ -2372,7 +2366,7 @@
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
                         if (r.pro) label += proTag;
                         if (r.name === '인건비' && isCur) label += proTag;
-                        if (r.name === '광고비' && adEst) label += proTag;
+
                         if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.join(' · ')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
@@ -3310,12 +3304,9 @@
             const ds = dateStr || todayStr();
             const ym = ds.substring(0, 7);
             const bd = bizDaysInMonth(ym) || 26;
+            // 배민 광고비는 2026-09-12부터 고정비가 아니라 채널 수수료(ad_pct)로 빠진다 —
+            // costs.json 에 광고 항목이 없으므로 여기서도 자연히 제외된다.
             return (costsConfig.fixed || []).reduce((s, f) => {
-                if (f.source === 'bm_ad_log') {
-                    const actual = bmAdSpendOn(ds);
-                    if (actual != null) return s + actual;
-                    return s + Math.round((f.amount || 0) / bd);
-                }
                 return s + Math.round(fixedAmountFor(f, ym).amt / bd);
             }, 0);
         }
@@ -3329,7 +3320,7 @@
             // 지난 달은 더 이상 바뀌지 않으므로 캐시 (달력에서 달을 넘길 때마다 재조회하지 않게)
             if (ym !== curYm && _monthNetCache[ym]) return _monthNetCache[ym];
             const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
-            let gross = 0, net = 0, mat = 0, days = 0, adv = 0;
+            let gross = 0, net = 0, mat = 0, days = 0, adv = 0, advBm = 0, advCp = 0;
             const monthDays = idx.filter(x => x.date.substring(0, 7) === ym);
 
             // 매출연동 광고비(쿠팡 등)는 정산에서 수수료와 함께 떼가므로 net에 이미 반영돼 있다.
@@ -3347,7 +3338,9 @@
                     gross += o.amount;
                     net += orderNet(o, d.date).net;
                     mat += orderCost(o, d.date);
-                    adv += advOf(o, d.date);
+                    const a = advOf(o, d.date);
+                    adv += a;
+                    if (o.channel.indexOf('배달의민족') === 0) advBm += a; else advCp += a;
                 });
             }
 
@@ -3359,10 +3352,12 @@
                     gross += o.amount;
                     net += orderNet(o, t.date).net;
                     mat += orderCost(o, t.date);
-                    adv += advOf(o, t.date);
+                    const a = advOf(o, t.date);
+                    adv += a;
+                    if (o.channel.indexOf('배달의민족') === 0) advBm += a; else advCp += a;
                 });
             }
-            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv };
+            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp };
             if (ym !== curYm) _monthNetCache[ym] = r;
             return r;
         }
