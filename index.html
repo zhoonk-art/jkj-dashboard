@@ -2550,7 +2550,7 @@
                     avgLine: { value: weeklyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { title: items => weekRange(items[0].dataIndex), label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
