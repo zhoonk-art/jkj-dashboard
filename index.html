@@ -2631,11 +2631,24 @@
             if (ch && dateStr && Array.isArray(ch.ad_pct_history)) {
                 ch.ad_pct_history.forEach(h => { if (h.from <= dateStr) ad = h.pct; });
             }
+            // 중개·결제·배달비도 바뀐 이력이 있으면 그 날짜 값을 쓴다 (배민 2026-09 요율 인하)
+            let med = ch ? (ch.mediation_pct || 0) : 0;
+            let pay = ch ? (ch.payment_pct || 0) : 0;
+            let del = ch ? (ch.delivery_fixed || 0) : 0;
+            if (ch && dateStr && Array.isArray(ch.rate_history)) {
+                ch.rate_history.slice().sort((a, b) => a.from.localeCompare(b.from))
+                    .forEach(h => {
+                        if (h.from > dateStr) return;
+                        if (typeof h.med === 'number') med = h.med;
+                        if (typeof h.pay === 'number') pay = h.pay;
+                        if (typeof h.del === 'number') del = h.del;
+                    });
+            }
             return {
-                med: ch ? (ch.mediation_pct || 0) : 0,   // 중개이용료 %
-                pay: ch ? (ch.payment_pct || 0) : 0,     // 결제정산수수료 %
-                del: ch ? (ch.delivery_fixed || 0) : 0,  // 건당 배달비 원
-                ad: ad                                   // 매출연동 광고비 %
+                med: med,   // 중개이용료 %
+                pay: pay,   // 결제정산수수료 %
+                del: del,   // 건당 배달비 원
+                ad: ad      // 매출연동 광고비 %
             };
         }
 
