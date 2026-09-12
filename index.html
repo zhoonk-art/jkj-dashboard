@@ -852,15 +852,27 @@
             line-height: 1.65;
         }
 
-        /* ---- 종료된 인건비 항목 (설정 화면 아래쪽) ---- */
-        .labor-ended-head {
-            margin-top: 16px;
-            padding-top: 12px;
+        /* ---- 종료된 인건비 항목 — 평소엔 접어둔다 ---- */
+        .labor-ended-fold {
+            margin-top: 14px;
+            padding-top: 10px;
             border-top: 1px dashed #d5cec7;
-            font-size: 12.5px;
-            font-weight: bold;
-            color: #8a8078;
         }
+
+        .labor-ended-fold > summary {
+            cursor: pointer;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #a09890;
+            list-style: none;
+            padding: 3px 0;
+        }
+        .labor-ended-fold > summary::-webkit-details-marker { display: none; }
+        .labor-ended-fold > summary::before {
+            content: '▸ ';
+            color: #c3bbb3;
+        }
+        .labor-ended-fold[open] > summary::before { content: '▾ '; }
 
         .labor-ended-note {
             font-size: 11.5px;
@@ -3371,9 +3383,12 @@
             });
             html += activeHtml;
             if (endedHtml) {
-                html += `<div class="labor-ended-head">지난 인건비 (지금은 안 나가는 항목)</div>
-                    <div class="labor-ended-note">이번 달 운영비에는 안 잡힙니다. 기록 탭에서 그 시기의 달을 볼 때만 결산에 들어갑니다 — 과거 손익을 정확하게 남겨두려고 보관하는 항목이니 지우지 마세요.</div>`
-                    + endedHtml;
+                const n = (costsConfig.labor || []).filter(isEnded).length;
+                html += `<details class="labor-ended-fold">
+                    <summary>지난 인건비 ${n}건</summary>
+                    <div class="labor-ended-note">이번 달 운영비에는 안 잡힙니다. 기록 탭에서 그 시기의 달을 볼 때만 결산에 들어갑니다 — 과거 손익을 정확하게 남겨두려고 보관하는 항목이니 지우지 마세요.</div>
+                    ${endedHtml}
+                </details>`;
             }
             box.innerHTML = html;
         }
