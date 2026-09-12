@@ -1366,45 +1366,6 @@
             </div>
         </div>
 
-        <!-- 마케팅 뷰 -->
-        <div id="profitView" class="hidden">
-
-            <div class="orders-section" style="margin-top: 12px; margin-bottom: 12px;">
-                <h2>📋 메뉴별 마진표</h2>
-                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). menu_costs.json의 가격은 포장가 기준이며, 배달가는 전 메뉴 공통으로 포장가+3,000원입니다. 포장 마진은 재료비만 차감, 배달 마진은 배달가 기준으로 배달의민족 앱주문 수수료(중개 7.8%+결제 3.0%+배달비 3,400원+부가세)까지 차감한 값입니다 — 채널에 따라 실제 마진은 이보다 다소 높거나(가게배달·땡겨요) 낮을(쿠팡이츠 광고비 별도) 수 있습니다. 사이드·음료는 배달앱에서도 같은 가격이고, 건당 배달비는 주문당 한 번만 나가므로 본메뉴에서만 차감했습니다.</p>
-                <div style="overflow-x: auto;">
-                    <table class="fee-table" id="menuMarginTable"></table>
-                </div>
-            </div>
-
-
-            <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>🧾 월 운영비 설정</h2>
-                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×이번 달 실제 근무 요일 수로 자동 계산됩니다 (중도 입사는 시작일부터).</p>
-                <div id="costSettings"></div>
-                <button class="save-btn" onclick="addCostItem()" style="background:#8a4a1f; margin-right:6px;">+ 항목 추가</button>
-                <button class="save-btn" onclick="saveCosts()">운영비 저장</button>
-                <span id="costSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
-            </div>
-
-            <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>🥘 재료비 설정</h2>
-                <p class="settings-note">단위 원가(원)입니다. 매입가가 바뀌면 여기서 수정하고 저장하세요.</p>
-                <div id="menuCostSettings"></div>
-                <button class="save-btn" onclick="saveMenuCosts()">재료비 저장</button>
-                <span id="menuCostSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
-            </div>
-
-            <div class="orders-section" id="feeSettingsSection">
-                <h2>⚙️ 채널 수수료 설정</h2>
-                <p class="settings-note">수수료율(%)과 건당 고정비(배달대행비 등)를 입력하세요. 매장 PC에서만 저장됩니다.</p>
-                <div id="feeSettings"></div>
-                <button class="save-btn" onclick="saveFees()">저장</button>
-                <span id="saveMsg" style="margin-left: 10px; font-size: 13px;"></span>
-            </div>
-        </div>
-
-        <!-- 마케팅 뷰 -->
         <div class="refresh-info">
             <p>⏱️ 실시간 자동 갱신 | 마지막 업데이트: <span id="lastUpdate">-</span></p>
         </div>
