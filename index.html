@@ -2345,7 +2345,7 @@
             // 매출 대비 비중이 큰 순서로 정렬
             const rows = [
                 { name: '재료비', amt: mn.mat },
-                { name: '플랫폼 수수료', note: '중개·결제·배달비', amt: fee - adv },
+                { name: '플랫폼 수수료', amt: fee - adv },
                 ...fixedRows,
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
@@ -2373,7 +2373,7 @@
                             <td class="pl-pct">${pct(r.amt)}%</td></tr>`;
                     }).join('')}
                     <tr class="${profit >= 0 ? 'pl-total' : 'pl-total pl-loss'}">
-                        <td class="pl-label">손에 남은 돈 (세전)</td>
+                        <td class="pl-label">손에 남은 돈</td>
                         <td class="pl-val">${profit >= 0 ? '+' : ''}${F(profit)}</td>
                         <td class="pl-pct">${pct(profit)}%</td></tr>
                 </table>
