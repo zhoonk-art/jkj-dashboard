@@ -406,6 +406,7 @@
            현장에 필요). 가리는 건 '돈 계산' 쪽뿐: 마진·원가·인건비·운영비·손익·광고비. */
         body[data-role="staff"] #tab-stats,
         body[data-role="staff"] #tab-work,
+        body[data-role="staff"] #settleSection,
         body[data-role="staff"] #tab-profit,
         body[data-role="staff"] #tab-marketing,
         body[data-role="staff"] #dayNet,
@@ -1216,6 +1217,13 @@
                 <h2 id="ordersTitle">📋 오늘의 주문 현황</h2>
                 <div id="ordersList"></div>
             </div>
+
+            <div class="orders-section" id="settleSection" style="margin-top: 12px;">
+                <h2>💰 채널별 실수령</h2>
+                <div style="overflow-x: auto;">
+                    <table class="fee-table" id="feeTable"></table>
+                </div>
+            </div>
         </div>
 
         <!-- 기록 뷰 (달력) -->
@@ -1272,29 +1280,6 @@
 
         <!-- 순익 뷰 -->
         <div id="profitView" class="hidden">
-            <div class="summary-grid profit-summary">
-                <div class="summary-card total-amount">
-                    <h3>오늘 순마진 (예상)</h3>
-                    <div class="summary-value" id="profitNet">0원</div>
-                    <div class="summary-unit" id="profitNetSub" style="color: rgba(255,255,255,0.8);"></div>
-                </div>
-                <div class="summary-card">
-                    <h3>총 매출</h3>
-                    <div class="summary-value" id="profitGross">0원</div>
-                </div>
-                <div class="summary-card">
-                    <h3>수수료 합계</h3>
-                    <div class="summary-value" id="profitFees" style="color: #e03131;">0원</div>
-                    <div class="summary-unit" id="profitFeeRate"></div>
-                </div>
-            </div>
-
-            <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>💰 오늘 채널별 실수령</h2>
-                <div style="overflow-x: auto;">
-                    <table class="fee-table" id="feeTable"></table>
-                </div>
-            </div>
 
             <div class="orders-section" style="margin-top: 12px; margin-bottom: 12px;">
                 <h2>📋 메뉴별 마진표</h2>
@@ -2184,6 +2169,9 @@
                 `).join('');
             }
 
+            // 채널별 실수령 (관리자만, 화면에 띄운 그 날짜 기준)
+            renderChannelSettle(effDate, orders);
+
             // 비교 스트립
             renderComparison(dateStr, summary, myToken);
         }
@@ -2654,51 +2642,32 @@
             return { med: med, pay: pay, del: del, ad: ad, vat: vat, fee: fee, net: order.amount - fee };
         }
 
-        async function renderProfit() {
-            await loadFees();
-            await loadMenuCosts();
-            const data = await loadJson('./processed/orders_latest.json');
+        // 채널별 실수령 표 — '오늘' 탭 맨 아래. renderDay 가 이미 읽어온 주문을 그대로 쓴다.
+        // (원래는 재무 탭에 있었는데 사장님 요청 2026-09-12 로 오늘 탭으로 옮김)
+        async function renderChannelSettle(dateStr, orders) {
+            const box = document.getElementById('feeTable');
+            if (!box) return;
+            if (DASH_ROLE === 'staff') { box.innerHTML = ''; return; }   // 수수료 분해는 관리자만
+            await Promise.all([loadFees(), loadMenuCosts()]);
+            const act = (orders || []).filter(o => !o.cancelled && !o.prepaid);
+            if (!act.length) { box.innerHTML = ''; return; }
 
-            // ----- 메뉴 마진표 + 운영비·재료비 설정 (오늘 주문 로드에 실패해도 항상 표시) -----
-            renderMenuMarginTable();
-            await loadCosts();
-            renderCostSettings();
-            renderMenuCostSettings();
-            const mc = costsAccrued();                 // 손익 계산엔 '지금까지 발생한' 운영비
-            document.getElementById('monthCosts').textContent = costsTotal().toLocaleString() + '원';
-
-            if (!data) return;
-
-            const orders = (data.orders || []).filter(o => !o.cancelled && !o.prepaid);
-
-            // 채널별 집계 (중개/결제/배달비/부가세 분해)
             const rows = {};
             let gross = 0, totalFee = 0, totalMat = 0;
             const tot = { med: 0, pay: 0, del: 0, ad: 0, vat: 0 };
-            orders.forEach(o => {
-                const r = orderNet(o);
-                const mat = orderCost(o, data.date);
-                gross += o.amount;
-                totalFee += r.fee;
-                totalMat += mat;
+            act.forEach(o => {
+                const r = orderNet(o, dateStr);
+                const mat = orderCost(o, dateStr);
+                gross += o.amount; totalFee += r.fee; totalMat += mat;
                 tot.med += r.med; tot.pay += r.pay; tot.del += r.del; tot.ad += r.ad; tot.vat += r.vat;
                 if (!rows[o.channel]) rows[o.channel] = { count: 0, gross: 0, med: 0, pay: 0, del: 0, ad: 0, vat: 0, fee: 0, net: 0, mat: 0 };
                 const row = rows[o.channel];
-                row.count++;
-                row.gross += o.amount;
+                row.count++; row.gross += o.amount;
                 row.med += r.med; row.pay += r.pay; row.del += r.del; row.ad += r.ad; row.vat += r.vat;
-                row.fee += r.fee;
-                row.net += r.net;
-                row.mat += mat;
+                row.fee += r.fee; row.net += r.net; row.mat += mat;
             });
             const net = gross - totalFee;
 
-            // 순마진 카드는 인건비 로드 후 아래에서 채움 (net/totalMat 사용)
-            document.getElementById('profitGross').textContent = gross.toLocaleString() + '원';
-            document.getElementById('profitFees').textContent = '-' + totalFee.toLocaleString() + '원';
-            document.getElementById('profitFeeRate').textContent = gross > 0 ? `평균 수수료율 ${(totalFee / gross * 100).toFixed(1)}%` : '';
-
-            // 채널 테이블 (항목별 분해)
             const chNames = Object.keys(rows).sort((a, b) => rows[b].gross - rows[a].gross);
             let html = '<tr><th>채널</th><th>건수</th><th>매출</th><th>마진</th><th>마진률</th><th>중개</th><th>결제</th><th>배달비</th><th>광고</th><th>부가세</th><th>실수령</th><th>재료비</th></tr>';
             chNames.forEach(ch => {
@@ -2723,7 +2692,7 @@
             const totalMargin = net - totalMat;
             const totalRate = gross > 0 ? (totalMargin / gross * 100).toFixed(1) : 0;
             html += `<tr class="total-row">
-                <td>합계</td><td>${orders.length}건</td>
+                <td>합계</td><td>${act.length}건</td>
                 <td>${gross.toLocaleString()}</td>
                 <td class="net-cell">${totalMargin.toLocaleString()}</td>
                 <td class="net-cell">${totalRate}%</td>
@@ -2735,7 +2704,24 @@
                 <td>${net.toLocaleString()}</td>
                 <td class="fee-cell">-${totalMat.toLocaleString()}</td>
             </tr>`;
-            document.getElementById('feeTable').innerHTML = html;
+            box.innerHTML = html;
+        }
+
+        async function renderProfit() {
+            await loadFees();
+            await loadMenuCosts();
+            const data = await loadJson('./processed/orders_latest.json');
+
+            // ----- 메뉴 마진표 + 운영비·재료비 설정 (오늘 주문 로드에 실패해도 항상 표시) -----
+            renderMenuMarginTable();
+            await loadCosts();
+            renderCostSettings();
+            renderMenuCostSettings();
+            const mc = costsAccrued();                 // 손익 계산엔 '지금까지 발생한' 운영비
+            document.getElementById('monthCosts').textContent = costsTotal().toLocaleString() + '원';
+
+            if (!data) return;
+
 
             // 설정 폼 (중개% / 결제% / 배달비)
             const settings = document.getElementById('feeSettings');
@@ -2760,14 +2746,6 @@
                 }).join('') +
                 `<p class="settings-note" style="margin-top:8px;">부가세는 네 항목 합계의 10%로 자동 계산됩니다. 광고%는 매출연동 광고(쿠팡 등)에만 사용하세요.</p>`;
 
-            // 오늘 순마진 카드: 수수료 + 재료비 + 인건비(오늘 실제 근무하는 직원만) 차감
-            const laborDaily = laborForDate(todayStr());
-            const adDaily = dailyFixedCost(todayStr());
-            const netMargin = net - totalMat - laborDaily - adDaily;
-            const nmRate = gross > 0 ? (netMargin / gross * 100).toFixed(1) : 0;
-            document.getElementById('profitNet').textContent = netMargin.toLocaleString() + '원';
-            document.getElementById('profitNetSub').textContent =
-                `수수료·재료비·인건비(일 ${laborDaily.toLocaleString()}원)·고정비 월세+관리비+가스비+광고비(일 ${adDaily.toLocaleString()}원) 차감 · 마진률 ${nmRate}%`;
 
             const m = await calcMonthNet();
             document.getElementById('monthNet').textContent = m.net.toLocaleString() + '원';
