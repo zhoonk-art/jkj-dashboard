@@ -946,6 +946,27 @@
             font-size: 13px;
         }
 
+        /* 오늘 탭 약식 선결제 */
+        .pm-count {
+            font-size: 12px; font-weight: 700; color: #fff; background: #7048e8;
+            border-radius: 10px; padding: 2px 9px; margin-left: 6px; vertical-align: 2px;
+        }
+        .pm-row {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            padding: 10px 12px; margin-bottom: 6px;
+            border: 1px solid #e6ddf5; border-left: 4px solid #7048e8;
+            border-radius: 8px; background: #fbfaff;
+        }
+        .pm-main { flex: 1; min-width: 200px; }
+        .pm-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+        .pm-date { font-size: 12.5px; color: #666; font-weight: 600; }
+        .pm-amt { font-size: 14px; font-weight: 800; color: #501100; }
+        .pm-sum { font-size: 11.5px; color: #999; margin-top: 3px; }
+        .pm-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+        .pm-btn { padding: 6px 12px; font-size: 11.5px; }
+
+        body[data-role="staff"] #prepaidMini { display: none !important; }
+
         .fee-table tr.menu-sec td {
             background: #f6f2ef;
             font-weight: 700;
@@ -1271,6 +1292,11 @@
                     <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
                 </div>
                 <div class="chart-card">
+                    <h3>🍗 요일별 닭 사용량</h3>
+                    <div class="chart-wrap"><canvas id="chickenDowChart"></canvas></div>
+                    <p class="settings-note" id="chickenDowNote" style="margin-top:6px;"></p>
+                </div>
+                <div class="chart-card">
                     <h3>📈 일별 매출</h3>
                     <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
                 </div>
@@ -1324,37 +1350,44 @@
         </div>
 
         <!-- 마케팅 뷰 -->
-        <div id="marketingView" class="hidden">
-            <div class="orders-section" style="margin-bottom: 12px; border-left: 4px solid #8a4a1f;">
-                <h2>🎯 배민 클릭광고 — 입찰가별 성과</h2>
-                <p class="settings-note">입찰가 구간별 배민 주문·매출·순이익입니다. 입찰가를 바꾸면 Claude에게 알려주세요 — 이력에 기록됩니다.</p>
-                <div id="bmAdLabBox"><div class="empty-note">데이터 준비 중...</div></div>
-            </div>
-            <div class="orders-section" style="margin-bottom: 12px; border-left: 4px solid #1971c2;">
-                <h2>🎯 쿠팡이츠 매출연동 광고 — 광고율별 성과</h2>
-                <p class="settings-note">광고율(%) 구간별 쿠팡 주문·매출·순이익입니다. 광고율을 바꾸면 Claude에게 알려주세요.</p>
-                <div id="cpAdLabBox"><div class="empty-note">데이터 준비 중...</div></div>
-            </div>
-            <div class="orders-section" style="margin-bottom: 12px; border-left: 4px solid #e8590c;">
-                <h2 id="chickenForecastTitle">🐔 내일 닭 준비량 예측</h2>
-                <p class="settings-note">3월부터의 요일별 실제 닭 사용량(주문 기준)으로 계산합니다. 단체·선결제 예약분은 별도로 더해주세요.</p>
-                <div id="chickenForecastBox"><div class="empty-note">데이터 준비 중... (22:30 아카이브 후 생성됩니다)</div></div>
-            </div>
-            <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>🔥 시간대별 평균 주문 건수</h2>
-                <p class="settings-note">최근 데이터에 비중을 더 둔 가중 평균(반감기 4주)입니다. 요일 버튼으로 나눠 볼 수 있습니다.</p>
-                <div id="hourDowTabs" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px;"></div>
-                <canvas id="hourBarChart" height="110"></canvas>
-            </div>
-            <div class="charts-grid">
-                <div class="chart-card wide">
-                    <h3>📊 주별 채널 매출</h3>
-                    <canvas id="channelTrendChart" height="100"></canvas>
+        <div id="profitView" class="hidden">
+
+            <div class="orders-section" style="margin-top: 12px; margin-bottom: 12px;">
+                <h2>📋 메뉴별 마진표</h2>
+                <p class="settings-note">재료비 원가 기준이며 양념 소스로 계산했습니다 (매콤간장은 국자당 105원 저렴). menu_costs.json의 가격은 포장가 기준이며, 배달가는 전 메뉴 공통으로 포장가+3,000원입니다. 포장 마진은 재료비만 차감, 배달 마진은 배달가 기준으로 배달의민족 앱주문 수수료(중개 7.8%+결제 3.0%+배달비 3,400원+부가세)까지 차감한 값입니다 — 채널에 따라 실제 마진은 이보다 다소 높거나(가게배달·땡겨요) 낮을(쿠팡이츠 광고비 별도) 수 있습니다. 사이드·음료는 배달앱에서도 같은 가격이고, 건당 배달비는 주문당 한 번만 나가므로 본메뉴에서만 차감했습니다.</p>
+                <div style="overflow-x: auto;">
+                    <table class="fee-table" id="menuMarginTable"></table>
                 </div>
+            </div>
+
+
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>🧾 월 운영비 설정</h2>
+                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×이번 달 실제 근무 요일 수로 자동 계산됩니다 (중도 입사는 시작일부터).</p>
+                <div id="costSettings"></div>
+                <button class="save-btn" onclick="addCostItem()" style="background:#8a4a1f; margin-right:6px;">+ 항목 추가</button>
+                <button class="save-btn" onclick="saveCosts()">운영비 저장</button>
+                <span id="costSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
+            </div>
+
+            <div class="orders-section" style="margin-bottom: 12px;">
+                <h2>🥘 재료비 설정</h2>
+                <p class="settings-note">단위 원가(원)입니다. 매입가가 바뀌면 여기서 수정하고 저장하세요.</p>
+                <div id="menuCostSettings"></div>
+                <button class="save-btn" onclick="saveMenuCosts()">재료비 저장</button>
+                <span id="menuCostSaveMsg" style="margin-left: 10px; font-size: 13px;"></span>
+            </div>
+
+            <div class="orders-section" id="feeSettingsSection">
+                <h2>⚙️ 채널 수수료 설정</h2>
+                <p class="settings-note">수수료율(%)과 건당 고정비(배달대행비 등)를 입력하세요. 매장 PC에서만 저장됩니다.</p>
+                <div id="feeSettings"></div>
+                <button class="save-btn" onclick="saveFees()">저장</button>
+                <span id="saveMsg" style="margin-left: 10px; font-size: 13px;"></span>
             </div>
         </div>
 
-        <!-- 선결제 뷰 -->
+        <!-- 마케팅 뷰 -->
         <div class="refresh-info">
             <p>⏱️ 실시간 자동 갱신 | 마지막 업데이트: <span id="lastUpdate">-</span></p>
         </div>
@@ -1778,7 +1811,7 @@
             try {
                 await savePrepaidAndRefresh(cfg, dDate !== todayStr(),
                     `✅ 납품 완료! ${dDate} 매출로 인식됩니다.` + (dDate !== todayStr() ? ' (1~2분 내 재정산)' : ''));
-                renderPrepaidTab();
+                renderPrepaidMini();
             } catch (err) { alert('저장 실패 - 매장 PC에서만 가능합니다.'); }
         }
 
@@ -1791,58 +1824,42 @@
             e.delivered_date = null;
             try {
                 await savePrepaidAndRefresh(cfg, true, '↩️ 대기 상태로 되돌렸습니다. (1~2분 내 재정산)');
-                renderPrepaidTab();
+                renderPrepaidMini();
             } catch (err) { alert('저장 실패 - 매장 PC에서만 가능합니다.'); }
         }
 
-        function showPrepaidTab() {
-            if (!guardTab('tab-prepaidview')) return;
-            currentMode = 'prepaidtab';
-            setActiveTab('tab-prepaidview');
-            showView('prepaidView');
-            document.getElementById('comparisonStrip').classList.add('hidden');
-            renderPrepaidTab();
-        }
 
-        async function renderPrepaidTab() {
+
+        // 오늘 탭 맨 아래 약식 선결제 — 대기 중인 건만 한 줄씩, 납품 버튼까지.
+        // (선결제 전용 탭은 2026-09-12에 삭제하고 여기로 합쳤다. 납품 완료 목록은 더 이상 보여주지 않는다)
+        async function renderPrepaidMini() {
+            const box = document.getElementById('prepaidMiniBox');
+            const cnt = document.getElementById('prepaidMiniCount');
+            if (!box) return;
+            if (DASH_ROLE === 'staff') { box.innerHTML = ''; if (cnt) cnt.textContent = ''; return; }
             const cfg = (await loadJson('./processed/prepaid.json')) || { orders: [] };
-            const pending = cfg.orders.filter(e => e.status !== 'delivered');
-            const done = cfg.orders.filter(e => e.status === 'delivered')
-                .sort((a, b) => (b.delivered_date || '').localeCompare(a.delivered_date || ''));
-
-            const pBox = document.getElementById('prepaidPending');
-            pBox.innerHTML = pending.length === 0
-                ? '<div class="empty-note">대기 중인 선결제 건이 없습니다</div>'
-                : pending.map(e => `
-                    <div class="history-row" style="border-left: 4px solid #7048e8;">
-                        <div class="history-top">
-                            <span class="history-date">${e.date} 결제 · ${e.channel}</span>
-                            <span class="history-amount">${(e.amount || 0).toLocaleString()}원</span>
+            const pending = (cfg.orders || []).filter(e => e.status !== 'delivered');
+            if (cnt) cnt.textContent = pending.length ? `대기 ${pending.length}건` : '';
+            if (!pending.length) {
+                box.innerHTML = '<div class="empty-note">대기 중인 선결제가 없습니다</div>';
+                return;
+            }
+            box.innerHTML = pending.map(e => `
+                <div class="pm-row">
+                    <div class="pm-main">
+                        <div class="pm-top">
+                            <span class="pm-date">${e.date} · ${e.channel}</span>
+                            <span class="pm-amt">${(e.amount || 0).toLocaleString()}원</span>
                         </div>
-                        <div class="history-meta">${e.summary || ''}${e.memo ? ' · 📝 ' + e.memo : ''}</div>
-                        ${IS_LOCAL ? `
-                        <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
-                            <button class="save-btn" style="padding:6px 14px; font-size:12px; background:#2b8a3e;" onclick="deliverPrepaid('${e.date}','${e.order_no}',false)">📦 오늘 납품 완료</button>
-                            <button class="save-btn" style="padding:6px 14px; font-size:12px; background:#8a4a1f;" onclick="deliverPrepaid('${e.date}','${e.order_no}',true)">다른 날짜로...</button>
-                            <button class="save-btn" style="padding:6px 14px; font-size:12px; background:#868e96;" onclick="togglePrepaid('${e.date}','${e.order_no}')">지정 해제</button>
-                        </div>` : ''}
-                    </div>`).join('');
-
-            const dBox = document.getElementById('prepaidDone');
-            dBox.innerHTML = done.length === 0
-                ? '<div class="empty-note">납품 완료된 건이 없습니다</div>'
-                : done.map(e => `
-                    <div class="history-row" style="border-left: 4px solid #2b8a3e; opacity: 0.85;">
-                        <div class="history-top">
-                            <span class="history-date">${e.delivered_date} 납품 (결제 ${e.date})</span>
-                            <span class="history-amount">${(e.amount || 0).toLocaleString()}원</span>
-                        </div>
-                        <div class="history-meta">${e.summary || ''}${e.memo ? ' · 📝 ' + e.memo : ''}</div>
-                        ${IS_LOCAL ? `
-                        <div style="margin-top: 6px;">
-                            <button class="save-btn" style="padding:5px 12px; font-size:11px; background:#868e96;" onclick="undeliverPrepaid('${e.date}','${e.order_no}')">↩️ 납품 취소</button>
-                        </div>` : ''}
-                    </div>`).join('');
+                        <div class="pm-sum">${e.summary || ''}${e.memo ? ' · 📝 ' + e.memo : ''}</div>
+                    </div>
+                    ${IS_LOCAL ? `
+                    <div class="pm-btns">
+                        <button class="save-btn pm-btn" style="background:#2b8a3e;" onclick="deliverPrepaid('${e.date}','${e.order_no}',false)">📦 오늘 납품</button>
+                        <button class="save-btn pm-btn" style="background:#8a4a1f;" onclick="deliverPrepaid('${e.date}','${e.order_no}',true)">다른 날짜</button>
+                        <button class="save-btn pm-btn" style="background:#868e96;" onclick="togglePrepaid('${e.date}','${e.order_no}')">해제</button>
+                    </div>` : ''}
+                </div>`).join('');
         }
 
         function toggleOrder(index) {
@@ -2148,6 +2165,8 @@
                 `).join('');
             }
 
+            renderPrepaidMini();
+
             // 채널별 실수령 (관리자만, 화면에 띄운 그 날짜 기준)
             renderChannelSettle(effDate, orders);
 
@@ -2397,6 +2416,70 @@
             if (!s || /^POS-/i.test(s)) return '';
             return s.length >= 4 ? s.slice(-4) : s;
         }
+        // 요일별 닭 사용량 — 최근 8주. 막대 = 평균 kg, 선 = 흐름.
+        // (전략 탭의 '닭 납품 예측'을 대신한다. 무슨 요일에 얼마나 쓰는지만 보면 준비량은 판단 가능)
+        async function renderChickenDow(m) {
+            const box = document.getElementById('chickenDowNote');
+            const cd = (m && m.chicken_daily) || null;
+            if (!cd) { if (box) box.textContent = '닭 사용량 데이터가 아직 없습니다'; return; }
+
+            const cut = new Date(); cut.setDate(cut.getDate() - 56);   // 최근 8주
+            const cutIso = `${cut.getFullYear()}-${String(cut.getMonth() + 1).padStart(2, '0')}-${String(cut.getDate()).padStart(2, '0')}`;
+            const byDow = [[], [], [], [], [], [], []];
+            Object.keys(cd).forEach(d => {
+                if (d < cutIso) return;
+                const kg = +cd[d];
+                if (!(kg > 0)) return;                       // 휴무일은 평균에서 뺀다
+                byDow[new Date(d + 'T00:00:00').getDay()].push(kg);
+            });
+
+            const names = ['일', '월', '화', '수', '목', '금', '토'];
+            const order = [2, 3, 4, 5, 6, 0, 1];             // 화~일, 월요일 마지막
+            const labels = [], avg = [], cnt = [];
+            order.forEach(dw => {
+                const a = byDow[dw];
+                if (!a.length) return;
+                labels.push(names[dw]);
+                avg.push(+(a.reduce((s, v) => s + v, 0) / a.length).toFixed(2));
+                cnt.push(a.length);
+            });
+            if (!labels.length) { if (box) box.textContent = '최근 8주 데이터가 없습니다'; return; }
+
+            drawChart('chickenDowChart', {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '평균 kg', data: avg, backgroundColor: 'rgba(138,74,31,0.45)', borderRadius: 3, order: 2 },
+                        { type: 'line', label: '흐름', data: avg, borderColor: '#5c3114', borderWidth: 1.5,
+                          tension: 0.3, fill: false, pointRadius: 3, pointBackgroundColor: '#5c3114',
+                          pointBorderColor: '#fff', pointBorderWidth: 1, order: 1 }
+                    ]
+                },
+                options: {
+                    responsive: true, animation: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            filter: item => item.datasetIndex === 0,
+                            callbacks: {
+                                label: ctx => `${ctx.parsed.y}kg · 약 ${Math.round(ctx.parsed.y / 0.7)}마리`,
+                                afterLabel: ctx => `${cnt[ctx.dataIndex]}일 평균`
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'kg' } } }
+                }
+            });
+
+            if (box) {
+                const tot = avg.reduce((s, v) => s + v, 0);
+                const max = Math.max.apply(null, avg), min = Math.min.apply(null, avg);
+                box.innerHTML = `최근 8주 · 주당 약 <b>${tot.toFixed(1)}kg</b>(${Math.round(tot / 0.7)}마리) · `
+                    + `가장 많은 ${labels[avg.indexOf(max)]}요일 ${max}kg, 가장 적은 ${labels[avg.indexOf(min)]}요일 ${min}kg`;
+            }
+        }
+
         // ===== 통계 뷰 =====
         async function renderStats() {
             const monthly = await loadJson('./processed/monthly_summary.json');
@@ -2536,6 +2619,7 @@
 
             // 시간대별 평균 주문 건수 (marketing_stats의 heat_wavg — 최근 가중 평균, 요일 필터 가능)
             const mstats = await loadJson('./processed/marketing_stats.json');
+            renderChickenDow(mstats);
             if (mstats && (mstats.heat_wavg || mstats.heat_amount)) {
                 window._hourlyHeat = mstats.heat_wavg || mstats.heat_count_3m;
                 renderHourlyDowFilter();
@@ -3531,14 +3615,6 @@
             renderProfit();
         }
 
-        function showMarketing() {
-            if (!guardTab('tab-marketing')) return;
-            currentMode = 'marketing';
-            setActiveTab('tab-marketing');
-            showView('marketingView');
-            document.getElementById('comparisonStrip').classList.add('hidden');
-            renderMarketing();
-        }
 
         // ===== 근무 기록 =====
         // costs.json 의 labor 설정(요일·시간·시급·입퇴사일)에서 근무표를 계산한다.
@@ -3647,14 +3723,6 @@
             box.innerHTML = html;
         }
 
-        function showWork() {
-            if (!guardTab('tab-work')) return;
-            currentMode = 'work';
-            setActiveTab('tab-work');
-            showView('workView');
-            document.getElementById('comparisonStrip').classList.add('hidden');
-            renderWork();
-        }
 
         // ===== 마케팅 =====
         // 채널 고정 색상 (엔티티별 고정 - 필터/순위와 무관)
