@@ -189,8 +189,7 @@
 
         /* 전폭 차트: 캔버스 높이를 래퍼로 고정한다.
            안 그러면 maintainAspectRatio 가 컨테이너 높이를 다시 키우는 되먹임이 생겨 캔버스가 계속 자란다. */
-        .chart-wrap { position: relative; height: 240px; }
-        .chart-wrap.tall { height: 300px; }
+        .chart-wrap { position: relative; height: 225px; }
 
         .chart-card.wide {
             grid-column: 1 / -1;
@@ -1252,20 +1251,20 @@
         <!-- 통계 뷰 -->
         <div id="statsView" class="hidden">
             <div class="charts-grid">
-                <div class="chart-card wide">
+                <div class="chart-card">
                     <h3>🕐 시간대별 평균 주문 건수 (최근 가중, 주문 접수시각 기준)</h3>
                     <div id="hourlyDowFilter" style="display:flex; flex-wrap:wrap; gap:5px; margin:6px 0 10px;"></div>
-                    <div class="chart-wrap tall"><canvas id="hourlyChart"></canvas></div>
+                    <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
                 </div>
-                <div class="chart-card wide">
+                <div class="chart-card">
                     <h3>📈 일별 매출 추이 (최근 14일)</h3>
                     <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
                 </div>
-                <div class="chart-card wide">
+                <div class="chart-card">
                     <h3>📈 주별 매출 추이 (최근 12주)</h3>
                     <div class="chart-wrap"><canvas id="weeklyChart"></canvas></div>
                 </div>
-                <div class="chart-card wide">
+                <div class="chart-card">
                     <h3>📈 월별 매출 추이</h3>
                     <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
                 </div>
