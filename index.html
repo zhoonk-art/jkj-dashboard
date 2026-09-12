@@ -4080,6 +4080,19 @@ loadJson = async function (url) {
         return null;
     }
 };
+
+// ★ 이 shim은 본문 스크립트보다 뒤에 실행된다. 세션에 역할이 남아 있으면 bootDash()가
+//   이미 원래(평문) loadJson으로 한 번 그려서 404가 난 상태다. 여기서 다시 그려준다.
+//   비밀번호가 세션에 없으면(다른 탭에서 열었을 때 등) 로그인 화면으로 되돌린다.
+(function reboot() {
+    if (!DASH_ROLE) return;                       // 아직 로그인 전 — 게이트가 떠 있음
+    if (!sessionStorage.getItem('dashpw')) {      // 역할만 있고 키가 없으면 다시 로그인
+        sessionStorage.removeItem('dashrole');
+        location.reload();
+        return;
+    }
+    showToday();
+})();
 </script>
 </body>
 </html>
