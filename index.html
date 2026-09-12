@@ -1459,6 +1459,9 @@
         }
 
         async function loadJson(url) {
+            // 로그인 전에는 어떤 데이터도 요청하지 않는다.
+            // (10초 폴링·초기 렌더가 로그인 화면 뒤에서 먼저 돌아 404를 내던 것을 막는다)
+            if (!DASH_ROLE) return null;
             try {
                 const response = await fetch(dataUrl(url) + '?t=' + Date.now());
                 if (!response.ok) throw new Error('HTTP ' + response.status);
