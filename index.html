@@ -405,10 +405,10 @@
            매출·건수·채널 구성은 보여준다(사장님 요청 2026-09-12 — 채널별 건수와 포장/배달 비율이
            현장에 필요). 가리는 건 '돈 계산' 쪽뿐: 마진·원가·인건비·운영비·손익·광고비. */
         body[data-role="staff"] #tab-stats,
-        body[data-role="staff"] #tab-work,
++
         body[data-role="staff"] #settleSection,
         body[data-role="staff"] #tab-profit,
-        body[data-role="staff"] #tab-marketing,
++
         body[data-role="staff"] #dayNet,
         body[data-role="staff"] #calMonthPL,
         body[data-role="staff"] .cal-loss-legend,
@@ -1181,9 +1181,6 @@
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
             <button class="view-tab" id="tab-profit" onclick="showProfit()">재무</button>
-            <button class="view-tab" id="tab-work" onclick="showWork()">근무</button>
-            <button class="view-tab" id="tab-marketing" onclick="showMarketing()">전략</button>
-            <button class="view-tab" id="tab-prepaidview" onclick="showPrepaidTab()">선결제</button>
         </div>
 
         <!-- 오늘 vs 어제 비교 -->
@@ -1238,6 +1235,11 @@
                 <div id="ordersList"></div>
             </div>
 
+            <div class="orders-section" id="prepaidMini" style="margin-top: 12px;">
+                <h2>💰 선결제 <span id="prepaidMiniCount" class="pm-count"></span></h2>
+                <div id="prepaidMiniBox"></div>
+            </div>
+
             <div class="orders-section" id="settleSection" style="margin-top: 12px;">
                 <h2>💰 채널별 실수령</h2>
                 <div style="overflow-x: auto;">
@@ -1261,21 +1263,6 @@
             </div>
         </div>
 
-        <div id="workView" class="hidden">
-            <div class="orders-section">
-                <div class="cal-header">
-                    <h2>👷 근무 기록 · 급여</h2>
-                    <div class="cal-nav">
-                        <button class="cal-nav-btn" onclick="workMove(-1)">◀</button>
-                        <span id="workTitle"></span>
-                        <button class="cal-nav-btn" onclick="workMove(1)">▶</button>
-                    </div>
-                </div>
-                <div id="workBox"></div>
-            </div>
-        </div>
-
-        <!-- 통계 뷰 -->
         <div id="statsView" class="hidden">
             <div class="charts-grid">
                 <div class="chart-card">
@@ -1368,18 +1355,6 @@
         </div>
 
         <!-- 선결제 뷰 -->
-        <div id="prepaidView" class="hidden">
-            <div class="orders-section" style="margin-bottom: 12px;">
-                <h2>💰 납품 대기 중인 선결제</h2>
-                <p class="settings-note">결제일 매출에서 제외된 건들입니다. 물건을 내어준 날 "납품 완료"를 누르면 그날 매출로 인식됩니다.</p>
-                <div id="prepaidPending"></div>
-            </div>
-            <div class="orders-section">
-                <h2>📦 납품 완료</h2>
-                <div id="prepaidDone"></div>
-            </div>
-        </div>
-
         <div class="refresh-info">
             <p>⏱️ 실시간 자동 갱신 | 마지막 업데이트: <span id="lastUpdate">-</span></p>
         </div>
@@ -1418,7 +1393,7 @@
         // 화면을 숨기는 것뿐 아니라 매출 금액 자체가 브라우저로 내려오지 않는다.
         const DASH_PW = { staff: '1118', admin: '1233' };
         const ROLE_LABEL = { staff: '👤 직원', admin: '🔑 관리자' };
-        const STAFF_TABS = ['tab-today', 'tab-history'];
+        const STAFF_TABS = ['tab-today', 'tab-history'];   // 근무·전략·선결제 탭은 2026-09-12에 삭제됨
         let DASH_ROLE = null;
         let _pendingRole = null;
 
@@ -1669,8 +1644,9 @@
         }
 
         function showView(viewId) {
-            ['dayView', 'historyView', 'statsView', 'profitView', 'workView', 'marketingView', 'prepaidView'].forEach(id => {
-                document.getElementById(id).classList.toggle('hidden', id !== viewId);
+            ['dayView', 'historyView', 'statsView', 'profitView'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle('hidden', id !== viewId);
             });
         }
 
