@@ -2640,13 +2640,24 @@
                     });
                     return { orders: orders, end: l };
                 };
-                let run = runWeek(0);
-                for (let i = 0; i < 10; i++) {
-                    const next = runWeek(run.end);
-                    const same = next.orders.join() === run.orders.join();
-                    run = next;
-                    if (same) break;
+                // 주 사용량이 10kg 배수가 아니라서 한 주 70kg / 다음 주 60kg 식으로 번갈아 가는 게 정상이다.
+                // 그래서 '완전히 같은 주'로 수렴하지 않을 수 있다 — 패턴이 되풀이되기 시작하면 그 주기 안에서
+                // 가장 넉넉한 주를 골라 쓴다 (모자라서 장사를 접는 쪽보다 조금 남는 쪽이 낫다).
+                const sumOf = a => a.reduce((s, v) => s + v, 0);
+                const runs = [];
+                let seed = 0, run = null;
+                for (let i = 0; i < 12; i++) {
+                    const r = runWeek(seed);
+                    const key = r.orders.join();
+                    const at = runs.findIndex(x => x.key === key);
+                    if (at >= 0) {                       // 주기 발견
+                        run = runs.slice(at).reduce((a, b) => sumOf(b.orders) > sumOf(a.orders) ? b : a);
+                        break;
+                    }
+                    runs.push({ key: key, orders: r.orders });
+                    seed = Math.max(0, r.end);           // 재고는 음수가 될 수 없다 (모자란 날은 그날로 끝)
                 }
+                if (!run) run = runs[0];
                 let totOrder = 0, totNeed = 0;
                 plan.forEach((p, i) => {
                     p.order = run.orders[i];
