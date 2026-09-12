@@ -1348,12 +1348,12 @@
                     <div class="chart-wrap"><canvas id="cpAdChart"></canvas></div>
                 </div>
                 <div class="chart-card">
-                    <h3>🍜 요기요·땡겨요 월별 주문</h3>
-                    <div class="chart-wrap"><canvas id="etcCountChart"></canvas></div>
+                    <h3>🔍 네이버 월별 주문</h3>
+                    <div class="chart-wrap"><canvas id="navCountChart"></canvas></div>
                 </div>
                 <div class="chart-card">
-                    <h3>🏠 네이버·포장 월별 주문</h3>
-                    <div class="chart-wrap"><canvas id="ownCountChart"></canvas></div>
+                    <h3>🏠 포장 월별 주문</h3>
+                    <div class="chart-wrap"><canvas id="packCountChart"></canvas></div>
                 </div>
                 <div class="chart-card">
                     <h3>🍗 요일별 닭 사용량</h3>
@@ -2616,11 +2616,12 @@
                     });
                     return { orders: orders, end: l };
                 };
-                let carry = 0, run = runWeek(0);
+                let run = runWeek(0);
                 for (let i = 0; i < 10; i++) {
                     const next = runWeek(run.end);
-                    if (next.orders.join() === run.orders.join()) { carry = run.end; run = next; break; }
-                    carry = run.end; run = next;
+                    const same = next.orders.join() === run.orders.join();
+                    run = next;
+                    if (same) break;
                 }
                 let totOrder = 0, totNeed = 0;
                 plan.forEach((p, i) => {
@@ -2640,8 +2641,7 @@
                             <td class="ord-need">${totNeed.toFixed(1)}kg</td>
                             <td class="ord-kg">${totOrder}kg</td>
                         </tr>
-                    </table>
-                    ${carry >= 1 ? `<div class="ord-note">지난 일요일 남은 약 ${carry.toFixed(0)}kg이 ${plan[0].day}요일로 이어집니다</div>` : ''}`;
+                    </table>`;
             }
 
         }
@@ -2839,8 +2839,8 @@
         const CH_GROUPS = {
             bm: ch => ch.indexOf('배달의민족') === 0,
             cp: ch => ch.indexOf('쿠팡') === 0,
-            etc: ch => ch.indexOf('요기요') === 0 || ch.indexOf('땡겨요') === 0,
-            own: ch => ch.indexOf('네이버') === 0 || ch.indexOf('포장') === 0
+            nav: ch => ch.indexOf('네이버') === 0,
+            pack: ch => ch.indexOf('포장') === 0
         };
         function monthChannelAgg(monthly, months, pred) {
             return months.map(m => {
@@ -2889,13 +2889,13 @@
             const lb = months.map(m => (+m.substring(5)) + '월');
             const bm = monthChannelAgg(monthly, months, CH_GROUPS.bm);
             const cp = monthChannelAgg(monthly, months, CH_GROUPS.cp);
-            const etc = monthChannelAgg(monthly, months, CH_GROUPS.etc);
-            const own = monthChannelAgg(monthly, months, CH_GROUPS.own);
+            const nav = monthChannelAgg(monthly, months, CH_GROUPS.nav);
+            const pack = monthChannelAgg(monthly, months, CH_GROUPS.pack);
 
             drawMonthBarLine('bmCountChart', lb, bm.map(x => x.count), 'rgba(45,183,181,0.5)', '#0b7c71', 'cnt');
             drawMonthBarLine('cpCountChart', lb, cp.map(x => x.count), 'rgba(255,107,107,0.5)', '#c92a2a', 'cnt');
-            drawMonthBarLine('etcCountChart', lb, etc.map(x => x.count), 'rgba(250,176,5,0.5)', '#c07800', 'cnt');
-            drawMonthBarLine('ownCountChart', lb, own.map(x => x.count), 'rgba(3,199,90,0.45)', '#08893f', 'cnt');
+            drawMonthBarLine('navCountChart', lb, nav.map(x => x.count), 'rgba(3,199,90,0.45)', '#08893f', 'cnt');
+            drawMonthBarLine('packCountChart', lb, pack.map(x => x.count), 'rgba(250,176,5,0.5)', '#c07800', 'cnt');
 
             await loadBmAdLog();
             const bmAd = months.map(m => {
@@ -2923,16 +2923,14 @@
             return feesConfig;
         }
 
-        // 결산표에서 수수료·광고비를 묶어 보여줄 때 쓰는 플랫폼 이름
-        // (배민 앱배달·가게배달·포장은 한 플랫폼으로 본다 — 정산도 한 곳에서 들어온다)
+        // 결산표에서 수수료를 묶어 보여줄 때 쓰는 구분.
+        // 수수료가 크게 나가는 쿠팡·배민만 따로 보고 나머지(요기요·땡겨요·네이버·포장)는 기타로 묶는다.
+        // 배민은 앱배달·가게배달·포장을 한 플랫폼으로 본다 — 정산도 한 곳에서 들어온다.
         function platformOf(channel) {
             const c = String(channel || '');
             if (c.indexOf('배달의민족') === 0) return '배민';
             if (c.indexOf('쿠팡') === 0) return '쿠팡';
-            if (c.indexOf('요기요') === 0) return '요기요';
-            if (c.indexOf('땡겨요') === 0) return '땡겨요';
-            if (c.indexOf('네이버') === 0) return '네이버';
-            return '포장';
+            return '기타';
         }
 
         function feeFor(channel, dateStr) {
