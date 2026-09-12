@@ -2591,7 +2591,9 @@
                     { day: '화', need: kgOf('화') },
                     { day: '수', need: kgOf('수') },
                     { day: '목', need: kgOf('목') },
-                    { day: '금', need: kgOf('금') + kgOf('토') + kgOf('일') }   // 금·토·일 3일치
+                    // 금요일분은 타이트하게. 여기서 남긴 닭은 월요일 휴무를 건너 화요일에나 쓰게 되는데
+                    // 나흘 묵은 닭을 쓰는 셈이라, 올림 대신 가장 가까운 10kg으로 맞춰 남는 양을 줄인다.
+                    { day: '금', need: kgOf('금') + kgOf('토') + kgOf('일'), tight: true }   // 금·토·일 3일치
                 ];
                 // 오늘 밤에 넣을 발주가 맨 위로 오도록 다음 입고일부터 돌린다.
                 // 남은 닭은 '다음 입고분'에서 빼야 하므로 순서가 맞아야 한다.
@@ -2610,7 +2612,8 @@
                 const runWeek = seed => {
                     let l = seed;
                     const orders = plan.map(p => {
-                        const o = Math.max(0, Math.ceil((p.need * BUF - l) / UNIT) * UNIT);
+                        const want = p.need * (p.tight ? 1 : BUF) - l;
+                        const o = Math.max(0, (p.tight ? Math.round(want / UNIT) : Math.ceil(want / UNIT)) * UNIT);
                         l = l + o - p.need;
                         return o;
                     });
