@@ -1378,7 +1378,7 @@
         // 화면을 숨기는 것뿐 아니라 매출 금액 자체가 브라우저로 내려오지 않는다.
         const DASH_PW = { staff: '1118', admin: '1233' };
         const ROLE_LABEL = { staff: '👤 직원', admin: '🔑 관리자' };
-        const STAFF_TABS = ['tab-today', 'tab-history', 'tab-prepaidview'];
+        const STAFF_TABS = ['tab-today', 'tab-history'];
         let DASH_ROLE = null;
         let _pendingRole = null;
 
@@ -1454,7 +1454,7 @@
         const ADMIN_ONLY_FILES = [
             'costs.json', 'menu_costs.json', 'fees.json', 'bm_ad_log.json', 'oil_ledger.json',
             'market_events.json', 'marketing_advice.json', 'marketing_stats.json',
-            'chicken_ledger.json', 'group_orders.json', 'monthly_summary.json'
+            'chicken_ledger.json', 'group_orders.json', 'monthly_summary.json', 'prepaid.json'
         ];
         function isAdminOnly(url) {
             const base = String(url).split('/').pop().split('?')[0];
@@ -1734,6 +1734,7 @@
         }
 
         function showPrepaidTab() {
+            if (!guardTab('tab-prepaidview')) return;
             currentMode = 'prepaidtab';
             setActiveTab('tab-prepaidview');
             showView('prepaidView');
@@ -2079,7 +2080,7 @@
                                     </div>
                                 `).join('')}
                             </div>
-                            ${IS_LOCAL && !order.recognized ? `<button class="save-btn" style="margin-top:8px; padding:5px 14px; font-size:11px; background:${order.prepaid ? '#868e96' : '#7048e8'};" onclick="togglePrepaid('${data.date}','${order.order_no}')">${order.prepaid ? '선결제 해제' : '💰 선결제로 지정 (매출 제외)'}</button>` : ''}
+                            ${IS_LOCAL && DASH_ROLE === 'admin' && !order.recognized ? `<button class="save-btn" style="margin-top:8px; padding:5px 14px; font-size:11px; background:${order.prepaid ? '#868e96' : '#7048e8'};" onclick="togglePrepaid('${data.date}','${order.order_no}')">${order.prepaid ? '선결제 해제' : '💰 선결제로 지정 (매출 제외)'}</button>` : ''}
                         </div>
                     </div>
                 `).join('');
