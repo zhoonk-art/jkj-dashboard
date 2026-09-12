@@ -2414,14 +2414,14 @@
             if (!s || /^POS-/i.test(s)) return '';
             return s.length >= 4 ? s.slice(-4) : s;
         }
-        // 요일별 닭 사용량 — 최근 8주. 막대 = 평균 kg, 선 = 흐름.
+        // 요일별 닭 사용량 — 최근 4주. 막대 = 평균 kg, 선 = 흐름.
         // (전략 탭의 '닭 납품 예측'을 대신한다. 무슨 요일에 얼마나 쓰는지만 보면 준비량은 판단 가능)
         async function renderChickenDow(m) {
             const box = document.getElementById('chickenDowNote');
             const cd = (m && m.chicken_daily) || null;
             if (!cd) { if (box) box.textContent = '닭 사용량 데이터가 아직 없습니다'; return; }
 
-            const cut = new Date(); cut.setDate(cut.getDate() - 56);   // 최근 8주
+            const cut = new Date(); cut.setDate(cut.getDate() - 28);   // 최근 4주
             const cutIso = `${cut.getFullYear()}-${String(cut.getMonth() + 1).padStart(2, '0')}-${String(cut.getDate()).padStart(2, '0')}`;
             const byDow = [[], [], [], [], [], [], []];
             Object.keys(cd).forEach(d => {
@@ -2441,7 +2441,7 @@
                 avg.push(+(a.reduce((s, v) => s + v, 0) / a.length).toFixed(2));
                 cnt.push(a.length);
             });
-            if (!labels.length) { if (box) box.textContent = '최근 8주 데이터가 없습니다'; return; }
+            if (!labels.length) { if (box) box.textContent = '최근 4주 데이터가 없습니다'; return; }
 
             drawChart('chickenDowChart', {
                 type: 'bar',
@@ -2473,7 +2473,7 @@
             if (box) {
                 const tot = avg.reduce((s, v) => s + v, 0);
                 const max = Math.max.apply(null, avg), min = Math.min.apply(null, avg);
-                box.innerHTML = `최근 8주 · 주당 약 <b>${tot.toFixed(1)}kg</b>(${Math.round(tot / 0.7)}마리) · `
+                box.innerHTML = `최근 4주 · 주당 약 <b>${tot.toFixed(1)}kg</b>(${Math.round(tot / 0.7)}마리) · `
                     + `가장 많은 ${labels[avg.indexOf(max)]}요일 ${max}kg, 가장 적은 ${labels[avg.indexOf(min)]}요일 ${min}kg`;
             }
         }
