@@ -2415,7 +2415,7 @@
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
                 adTotal ? { name: '광고비', amt: adTotal,
-                    parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advCp ? part('쿠팡', mn.advCp) : null].filter(Boolean) } : null
+                    parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advCp ? part('쿠팡 예상', mn.advCp) : null].filter(Boolean) } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
 
             let html = `<div class="cal-pl">
@@ -2501,7 +2501,7 @@
                 ...fixedRows,
                 adTotal ? {
                     name: '광고비', amt: adTotal,
-                    parts: [adBm ? part('배민', adBm) : null, adCp ? part('쿠팡', adCp) : null].filter(Boolean)
+                    parts: [adBm ? part('배민', adBm) : null, adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
                 } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
 
