@@ -829,6 +829,7 @@
             line-height: 1.5;
         }
         .pl-parts-pct { color: #bcae9f; }
+        .pl-part { display: block; }   /* 세부항목은 항목마다 줄을 바꾼다 */
 
         .pl-inline-note {
             font-size: 10.5px;
@@ -2403,15 +2404,23 @@
             const beDaily = contribRate > 0 ? Math.round(costsTotal(ym) / bizTot / contribRate) : 0;
             const part = (label, v) => `${label} ${F(v)}원 <span class="pl-parts-pct">${pct(v)}%</span>`;
 
+            // 고정비를 둘로 나눠 묶는다: 식용유는 재료비에, 나머지(월세·관리비·가스비)는 운영비에.
+            // 금액은 그대로이고 보여주는 묶음만 바뀐다 — 세부 금액은 각 행 아래에 한 줄씩.
+            const isOil = r => /식용유|기름/.test(r.name);
+            const oilAmt = fixedRows.filter(isOil).reduce((s, r) => s + r.amt, 0);
+            const opsRows = fixedRows.filter(r => !isOil(r)).sort((a, b) => b.amt - a.amt);
+            const opsAmt = opsRows.reduce((s, r) => s + r.amt, 0);
+
             // 매출 대비 비중이 큰 순서로 정렬
             const rows = [
-                { name: '재료비', amt: mn.mat },
+                { name: '재료비', amt: mn.mat + oilAmt,
+                    parts: oilAmt ? [part('식재료', mn.mat), part('식용유', oilAmt)] : [] },
                 {
                     name: '플랫폼 수수료', amt: fee - adv,   // 광고비는 아래 별도 행
                     parts: Object.keys(mn.feePlat || {}).filter(k => mn.feePlat[k] > 0)
                         .sort((a, b) => mn.feePlat[b] - mn.feePlat[a]).map(k => part(k, mn.feePlat[k]))
                 },
-                ...fixedRows,
+                opsAmt ? { name: '운영비', amt: opsAmt, pro: isCur, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
                 adTotal ? { name: '광고비', amt: adTotal,
@@ -2429,7 +2438,7 @@
                         if (r.pro) label += proTag;
                         if (r.name === '인건비' && isCur) label += proTag;
 
-                        if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.join(' · ')}</span>`;
+                        if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.map(x => `<span class="pl-part">${x}</span>`).join('')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
                             <td class="pl-val">−${F(r.amt)}</td>
@@ -2490,15 +2499,22 @@
                 amt: Math.round(fixedAmountFor(f, ymD).amt / bdD)
             })).filter(r => r.amt > 0);
 
+            // 월 결산과 같은 묶음: 식용유는 재료비에, 월세·관리비·가스비는 운영비에
+            const isOil = r => /식용유|기름/.test(r.name);
+            const oilAmt = fixedRows.filter(isOil).reduce((s, r) => s + r.amt, 0);
+            const opsRows = fixedRows.filter(r => !isOil(r)).sort((a, b) => b.amt - a.amt);
+            const opsAmt = opsRows.reduce((s, r) => s + r.amt, 0);
+
             const rows = [
-                { name: '재료비', amt: mat },
+                { name: '재료비', amt: mat + oilAmt,
+                    parts: oilAmt ? [part('식재료', mat), part('식용유', oilAmt)] : [] },
                 {
                     name: '플랫폼 수수료', amt: fee - adTotal,
                     parts: Object.keys(feePlat).filter(k => feePlat[k] > 0)
                         .sort((a, b) => feePlat[b] - feePlat[a]).map(k => part(k, feePlat[k]))
                 },
                 { name: '인건비', amt: labor },
-                ...fixedRows,
+                opsAmt ? { name: '운영비', amt: opsAmt, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 adTotal ? {
                     name: '광고비', amt: adTotal,
                     parts: [adBm ? part('배민', adBm) : null, adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
@@ -2515,7 +2531,7 @@
                     ${rows.map(r => {
                         let label = r.name;
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
-                        if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.join(' · ')}</span>`;
+                        if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.map(x => `<span class="pl-part">${x}</span>`).join('')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
                             <td class="pl-val">−${F(r.amt)}</td>
@@ -2722,7 +2738,9 @@
 
             // 월별 매출은 목록 대신 선그래프로만 본다 (사장님 요청 2026-09-12 — 표는 중복이라 삭제)
             if (!monthly) return;
-            const months = Object.keys(monthly).sort();
+            // 2026-03에 판매가를 바꿨으므로 그 전 달은 비교 대상에서 뺀다 (월별 매출·평균선·채널별 월 추이 공통)
+            const STATS_FROM = '2026-03';
+            const months = Object.keys(monthly).sort().filter(m => m >= STATS_FROM);
 
             // 단체주문(이벤트성 선결제 납품) 날짜별 금액 — 평균선 계산에서 제외용 (막대에는 그대로 포함)
             const ppStats = await loadJson('./processed/prepaid.json');
