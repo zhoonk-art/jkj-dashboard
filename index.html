@@ -2016,7 +2016,8 @@
                 // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비(월세·관리비·가스·식용유)
                 const laborDay = laborForDate(effDate);
                 const adDay = dailyFixedItems(effDate).reduce((s, r) => s + r.amt, 0);
-                const margin = netSum - matSum - laborDay - adDay;
+                const extAdDay = dailyAdItems(effDate).reduce((s, a) => s + a.amt, 0);   // 네이버 플레이스 등
+                const margin = netSum - matSum - laborDay - adDay - extAdDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
                     activeOrders.length > 0
@@ -2406,8 +2407,10 @@
                 fixedRows.push({ name: f.name, amt: Math.round(a.amt * proRate), est: a.est, pro: isCur });
             });
             const adTotal = adv;             // 배민·쿠팡 모두 주문별 수수료에서 차감됨
+            const extAd = dailyAdMonth(ym, upto);   // 네이버 플레이스 등 하루 정액 광고 (정산과 무관하게 따로 나감)
+            const extAdSum = sumVals(extAd);
             const opTotal = fixedRows.reduce((s, r) => s + r.amt, 0) + laborTotal;
-            const profit = mn.net - mn.mat - opTotal;
+            const profit = mn.net - mn.mat - opTotal - extAdSum;
 
             // 비율 기준: 흑자면 매출, 적자면 총비용 — 어느 쪽이든 표의 비율을 다 더하면 100%
             const pctBase = profit >= 0 ? mn.gross : mn.gross - profit;
@@ -2438,9 +2441,10 @@
                 opsAmt ? { name: '운영비', amt: opsAmt, pro: isCur, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
-                adTotal ? { name: '광고비', amt: adTotal,
+                (adTotal + extAdSum) ? { name: '광고비', amt: adTotal + extAdSum,
                     parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advSale ? part('배민 타임세일', mn.advSale) : null,
-                        mn.advCp ? part('쿠팡 예상', mn.advCp) : null].filter(Boolean) } : null
+                        mn.advCp ? part('쿠팡 예상', mn.advCp) : null]
+                        .concat(Object.keys(extAd).map(k => part(k, extAd[k]))).filter(Boolean) } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
             // 표에 찍을 비율 — 흑자면 [비용들 + 손에 남은 돈], 적자면 [비용들]이 합쳐서 100.0%
             const rowPcts = pctsTo100(rows.map(r => r.amt).concat(profit >= 0 ? [profit] : []), pctBase);
@@ -2503,8 +2507,10 @@
             const labor = laborForDate(dateStr);
             const fixedRows = dailyFixedItems(dateStr);   // 월세·관리비·가스·식용유 하루치
             const fixed = fixedRows.reduce((s, r) => s + r.amt, 0);
-            const adTotal = adBm + adCp + adSale;
-            const profit = net - mat - labor - fixed;
+            const adTotal = adBm + adCp + adSale;              // 주문에서 빠지는 광고비 (플랫폼 수수료 계산에 씀)
+            const extAds = dailyAdItems(dateStr);              // 네이버 플레이스 등 하루 정액 광고
+            const extAdSum = extAds.reduce((s, a) => s + a.amt, 0);
+            const profit = net - mat - labor - fixed - extAdSum;
 
             const F = n => Math.round(n).toLocaleString();
             // 비율 기준: 흑자면 매출, 적자면 총비용 — 어느 쪽이든 표의 비율을 다 더하면 100%
@@ -2530,10 +2536,10 @@
                 },
                 { name: '인건비', amt: labor },
                 opsAmt ? { name: '운영비', amt: opsAmt, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
-                adTotal ? {
-                    name: '광고비', amt: adTotal,
+                (adTotal + extAdSum) ? {
+                    name: '광고비', amt: adTotal + extAdSum,
                     parts: [adBm ? part('배민', adBm) : null, adSale ? part('배민 타임세일', adSale) : null,
-                        adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
+                        adCp ? part('쿠팡 예상', adCp) : null].concat(extAds.map(a => part(a.name, a.amt))).filter(Boolean)
                 } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
             // 표에 찍을 비율 — 흑자면 [비용들 + 손에 남은 돈], 적자면 [비용들]이 합쳐서 100.0%
@@ -2581,7 +2587,8 @@
                     let sum = 0;
                     od.orders.filter(o => o && !o.cancelled && !o.prepaid)
                         .forEach(o => { sum += orderNet(o, ds).net - orderCost(o, ds); });
-                    _dayMarginCache[ds] = sum - laborForDate(ds) - dailyFixedCost(ds);
+                    _dayMarginCache[ds] = sum - laborForDate(ds) - dailyFixedCost(ds)
+                        - dailyAdItems(ds).reduce((s, a) => s + a.amt, 0);
                 }
                 const mg = _dayMarginCache[ds];
                 if (mg != null && mg < 0) {
@@ -3690,6 +3697,7 @@
                 sum += (f.source === 'bm_ad_log' && !a.est) ? a.amt : Math.round(a.amt * rate);
             });
             (costsConfig.labor || []).forEach(l => { sum += laborMonthly(l, ym, upto); });
+            sum += sumVals(dailyAdMonth(ym, upto));
             return sum;
         }
 
@@ -3728,10 +3736,33 @@
             return { amt: f.amount || 0, est: !!f.varies };
         }
 
+        // 하루 정액으로 나가는 광고비(네이버 플레이스 등) — costs.json daily_ads [{name, amount_per_day, from, to?}].
+        // 주문과 상관없이 영업일마다 나가는 돈이라 주문별 수수료(orderNet)가 아니라 여기서 더한다. 휴무일엔 0.
+        function dailyAdItems(dateStr) {
+            if (!costsConfig || !isBizDay(dateStr)) return [];
+            return (costsConfig.daily_ads || [])
+                .filter(a => a && (!a.from || dateStr >= a.from) && (!a.to || dateStr <= a.to))
+                .map(a => ({ name: a.name, amt: Math.round(+a.amount_per_day || 0) }))
+                .filter(a => a.amt > 0);
+        }
+        // 그 달(upto가 있으면 그날까지) 하루 정액 광고비를 이름별로 합산
+        function dailyAdMonth(ym, upto) {
+            const y = +ym.substring(0, 4), mo = +ym.substring(5, 7);
+            const last = new Date(y, mo, 0).getDate();
+            const end = (upto && upto.substring(0, 7) === ym) ? Math.min(+upto.substring(8, 10), last) : last;
+            const by = {};
+            for (let d = 1; d <= end; d++) {
+                dailyAdItems(ym + '-' + String(d).padStart(2, '0')).forEach(a => { by[a.name] = (by[a.name] || 0) + a.amt; });
+            }
+            return by;
+        }
+        const sumVals = o => Object.keys(o).reduce((s, k) => s + o[k], 0);
+
         function costsTotal(ym) {
             let sum = 0;
             (costsConfig.fixed || []).forEach(f => { sum += fixedAmountFor(f, ym).amt; });
             (costsConfig.labor || []).forEach(l => { sum += laborMonthly(l, ym); });
+            sum += sumVals(dailyAdMonth(ym));
             return sum;
         }
 
