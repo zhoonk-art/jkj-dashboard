@@ -2002,7 +2002,7 @@
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
             // 총매출/포장/배달 카드에 예상 마진 + 마진률 병기 (인건비 포함)
-            Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog(), loadHeat()]).then(() => {
+            Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]).then(() => {
                 let netSum = 0, matSum = 0;
                 const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
                 activeOrders.forEach(o => {
@@ -2013,10 +2013,9 @@
                     t.margin += n - c;
                     t.gross += o.amount;
                 });
-                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비 — 영업 중이면 경과율만큼만
-                const prog = dayProgress(effDate);
-                const laborDay = Math.round(laborForDate(effDate) * prog);
-                const adDay = dailyFixedItems(effDate, prog).reduce((s, r) => s + r.amt, 0);
+                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비(월세·관리비·가스·식용유)
+                const laborDay = laborForDate(effDate);
+                const adDay = dailyFixedItems(effDate).reduce((s, r) => s + r.amt, 0);
                 const margin = netSum - matSum - laborDay - adDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
@@ -2410,7 +2409,10 @@
             const opTotal = fixedRows.reduce((s, r) => s + r.amt, 0) + laborTotal;
             const profit = mn.net - mn.mat - opTotal;
 
-            const pct = v => mn.gross > 0 ? (v / mn.gross * 100).toFixed(1) : '0.0';
+            // 비율 기준: 흑자면 매출, 적자면 총비용 — 어느 쪽이든 표의 비율을 다 더하면 100%
+            const pctBase = profit >= 0 ? mn.gross : mn.gross - profit;
+            const pctHead = profit >= 0 ? '매출 대비' : '비용 대비';
+            const pct = v => pctBase > 0 ? (v / pctBase * 100).toFixed(1) : '0.0';
 
             // 손익분기 하루 매출 = 그 달 운영비 전액 ÷ 그 달 영업일 ÷ 공헌이익률(매출에서 수수료·재료비 뺀 비율)
             const contribRate = mn.gross > 0 ? (mn.net - mn.mat) / mn.gross : 0;
@@ -2439,13 +2441,15 @@
                 adTotal ? { name: '광고비', amt: adTotal,
                     parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advCp ? part('쿠팡 예상', mn.advCp) : null].filter(Boolean) } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
+            // 표에 찍을 비율 — 흑자면 [비용들 + 손에 남은 돈], 적자면 [비용들]이 합쳐서 100.0%
+            const rowPcts = pctsTo100(rows.map(r => r.amt).concat(profit >= 0 ? [profit] : []), pctBase);
 
             let html = `<div class="cal-pl">
                 <div class="cal-pl-title">${y}년 ${m + 1}월 결산${isCur ? ' <span class="pl-badge">진행 중</span>' : ''}</div>
                 <table class="cal-pl-table">
-                    <tr class="pl-colhead"><td></td><td class="pl-val">금액</td><td class="pl-pct">매출 대비</td></tr>
+                    <tr class="pl-colhead"><td></td><td class="pl-val">금액</td><td class="pl-pct">${pctHead}</td></tr>
                     <tr class="pl-head"><td class="pl-label">매출액</td><td class="pl-val">${F(mn.gross)}</td><td class="pl-pct"></td></tr>
-                    ${rows.map(r => {
+                    ${rows.map((r, ri) => {
                         let label = r.name;
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
                         if (r.pro) label += proTag;
@@ -2455,12 +2459,12 @@
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
                             <td class="pl-val">−${F(r.amt)}</td>
-                            <td class="pl-pct">${pct(r.amt)}%</td></tr>`;
+                            <td class="pl-pct">${rowPcts[ri]}%</td></tr>`;
                     }).join('')}
                     <tr class="${profit >= 0 ? 'pl-total' : 'pl-total pl-loss'}">
                         <td class="pl-label">손에 남은 돈</td>
                         <td class="pl-val">${profit >= 0 ? '+' : ''}${F(profit)}</td>
-                        <td class="pl-pct">${pct(profit)}%</td></tr>
+                        <td class="pl-pct">${profit >= 0 ? rowPcts[rows.length] + '%' : ''}</td></tr>
                 </table>
                 <div class="cal-pl-note">
                     영업 ${mn.days}일 · 하루 평균 매출 ${F(mn.gross / mn.days)}원 · 하루 평균 순익 ${F(profit / mn.days)}원 · 세금(부가세·소득세) 내기 전 기준입니다.
@@ -2478,7 +2482,7 @@
             const box = document.getElementById('dayPL');
             if (!box) return;
             if (DASH_ROLE === 'staff') { box.innerHTML = ''; return; }   // 결산은 관리자 전용
-            await Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadHeat()]);
+            await Promise.all([loadFees(), loadMenuCosts(), loadCosts()]);
             const act = (orders || []).filter(o => o && !o.cancelled && !o.prepaid);
             if (!act.length) { box.innerHTML = ''; return; }
 
@@ -2494,16 +2498,17 @@
                 feePlat[pf] = (feePlat[pf] || 0) + (r.fee - r.ad);
             });
             const net = gross - fee;                 // 정산 실수령
-            // 영업 중이면 인건비·고정비는 하루 경과율만큼만 (마감 시각이 지나면 100%)
-            const prog = dayProgress(dateStr);
-            const labor = Math.round(laborForDate(dateStr) * prog);
-            const fixedRows = dailyFixedItems(dateStr, prog);   // 월세·관리비·가스·식용유 하루치
+            const labor = laborForDate(dateStr);
+            const fixedRows = dailyFixedItems(dateStr);   // 월세·관리비·가스·식용유 하루치
             const fixed = fixedRows.reduce((s, r) => s + r.amt, 0);
             const adTotal = adBm + adCp;
             const profit = net - mat - labor - fixed;
 
             const F = n => Math.round(n).toLocaleString();
-            const pct = v => gross > 0 ? (v / gross * 100).toFixed(1) : '0.0';
+            // 비율 기준: 흑자면 매출, 적자면 총비용 — 어느 쪽이든 표의 비율을 다 더하면 100%
+            const pctBase = profit >= 0 ? gross : gross - profit;
+            const pctHead = profit >= 0 ? '매출 대비' : '비용 대비';
+            const pct = v => pctBase > 0 ? (v / pctBase * 100).toFixed(1) : '0.0';
             const part = (label, v) => `${label} ${F(v)}원 <span class="pl-parts-pct">${pct(v)}%</span>`;
 
 
@@ -2521,39 +2526,39 @@
                     parts: Object.keys(feePlat).filter(k => feePlat[k] > 0)
                         .sort((a, b) => feePlat[b] - feePlat[a]).map(k => part(k, feePlat[k]))
                 },
-                { name: '인건비', amt: labor, pro: prog < 1 },
-                opsAmt ? { name: '운영비', amt: opsAmt, pro: prog < 1, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
+                { name: '인건비', amt: labor },
+                opsAmt ? { name: '운영비', amt: opsAmt, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 adTotal ? {
                     name: '광고비', amt: adTotal,
                     parts: [adBm ? part('배민', adBm) : null, adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
                 } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
+            // 표에 찍을 비율 — 흑자면 [비용들 + 손에 남은 돈], 적자면 [비용들]이 합쳐서 100.0%
+            const rowPcts = pctsTo100(rows.map(r => r.amt).concat(profit >= 0 ? [profit] : []), pctBase);
 
             const d = new Date(dateStr + 'T00:00:00');
             const isToday = dateStr === todayStr();
             box.innerHTML = `<div class="cal-pl">
                 <div class="cal-pl-title">${d.getMonth() + 1}월 ${d.getDate()}일 결산${isToday ? ' <span class="pl-badge">진행 중</span>' : ''}</div>
                 <table class="cal-pl-table">
-                    <tr class="pl-colhead"><td></td><td class="pl-val">금액</td><td class="pl-pct">매출 대비</td></tr>
+                    <tr class="pl-colhead"><td></td><td class="pl-val">금액</td><td class="pl-pct">${pctHead}</td></tr>
                     <tr class="pl-head"><td class="pl-label">매출액</td><td class="pl-val">${F(gross)}</td><td class="pl-pct"></td></tr>
-                    ${rows.map(r => {
+                    ${rows.map((r, ri) => {
                         let label = r.name;
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
-                        if (r.pro) label += ` <span class="pl-pro">[${Math.round(prog * 100)}%]</span>`;
                         if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.map(x => `<span class="pl-part">${x}</span>`).join('')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
                             <td class="pl-val">−${F(r.amt)}</td>
-                            <td class="pl-pct">${pct(r.amt)}%</td></tr>`;
+                            <td class="pl-pct">${rowPcts[ri]}%</td></tr>`;
                     }).join('')}
                     <tr class="${profit >= 0 ? 'pl-total' : 'pl-total pl-loss'}">
                         <td class="pl-label">손에 남은 돈</td>
                         <td class="pl-val">${profit >= 0 ? '+' : ''}${F(profit)}</td>
-                        <td class="pl-pct">${pct(profit)}%</td></tr>
+                        <td class="pl-pct">${profit >= 0 ? rowPcts[rows.length] + '%' : ''}</td></tr>
                 </table>
                 <div class="cal-pl-note">
                     ${act.length}건 · 객단가 ${F(gross / act.length)}원${isToday ? ' · <b>영업 중</b>이라 마감까지 더 올라갑니다' : ''}
-                    ${prog < 1 ? `<br>· 인건비·운영비·식용유는 하루치의 <b>${Math.round(prog * 100)}%</b>만 잡았습니다 — 평소 ${'일월화수목금토'[d.getDay()]}요일 이 시각까지 들어오는 주문 비율. 마감하면 100%가 됩니다.` : ''}
                 </div>
             </div>`;
         }
@@ -3768,31 +3773,19 @@
         //   (예전에는 daily:true인 항목만 골라 /30으로 나눠서 월세 990,000원이 통째로 빠져 있었다.)
         //   나누는 값도 30일이 아니라 실제 영업일 수 — 월요일에 쉬는 만큼 영업일이 더 부담해야 계산이 맞는다.
         //   배민 광고비는 그날 실비가 있으면 그 값을 그대로 쓴다.
-        // 진행 중인 날의 '하루 경과율' — 평소 그 요일에 지금 시각까지 하루 주문의 몇 %가 들어오는지.
-        // 영업 중에 하루치 인건비·운영비를 통째로 빼면 점심때 5건 매출에 고정비 60%, 순익 −90% 같은
-        // 말이 안 되는 비율이 나온다. 그래서 오늘은 고정비를 이 비율만큼만 잡고, 마감 때 100%가 된다.
-        // 시간대별 주문 그래프와 같은 데이터(marketing_stats.heat_wavg, 최근 4주 1.0 / 4~8주 0.5 가중)를 쓴다.
-        let _heatWavg = null;
-        async function loadHeat() {
-            if (_heatWavg === null) {
-                const m = await loadJson('./processed/marketing_stats.json');
-                _heatWavg = (m && m.heat_wavg) || false;
-            }
-            return _heatWavg;
+        // 결산표 비율을 소수 첫째 자리로 반올림하되 표에 보이는 숫자의 합이 정확히 100.0%가 되게 맞춘다.
+        // (각자 반올림하면 100.1%·99.9%가 나온다 — 잘린 끝자리가 큰 항목부터 0.1%씩 올려준다)
+        function pctsTo100(values, base) {
+            if (!(base > 0)) return values.map(() => '0.0');
+            const raw = values.map(v => v / base * 1000);          // 0.1% 단위
+            const fl = raw.map(Math.floor);
+            let left = Math.round(values.reduce((s, v) => s + v, 0) / base * 1000) - fl.reduce((s, v) => s + v, 0);
+            raw.map((r, i) => [r - fl[i], i]).sort((a, b) => b[0] - a[0])
+                .forEach(x => { if (left > 0) { fl[x[1]]++; left--; } });
+            return fl.map(v => (v / 10).toFixed(1));
         }
-        function dayProgress(dateStr) {
-            if (dateStr !== todayStr() || !_heatWavg) return 1;       // 지난 날은 항상 하루치 전부
-            const row = _heatWavg[new Date(dateStr + 'T00:00:00').getDay()] || [];
-            const tot = row.reduce((s, v) => s + (+v || 0), 0);
-            if (!(tot > 0)) return 1;
-            const now = new Date();
-            const h = now.getHours();
-            let done = 0;
-            for (let i = 0; i < h; i++) done += (+row[i] || 0);
-            done += (+row[h] || 0) * (now.getMinutes() / 60);         // 지금 시간대는 분 단위로 비례
-            return Math.min(1, Math.max(0, done / tot));
-        }
-        // 하루치 고정비를 항목별로 (prog = 하루 경과율, 기본 1). 항목별로 반올림해 결산표와 카드가 원 단위까지 같게.
+
+        // 하루치 고정비를 항목별로 (prog = 곱할 비율, 기본 1). 항목별로 반올림해 결산표와 카드가 원 단위까지 같게.
         function dailyFixedItems(dateStr, prog) {
             const ym = dateStr.substring(0, 7);
             const bd = bizDaysInMonth(ym) || 26;
