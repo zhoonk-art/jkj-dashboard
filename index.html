@@ -2439,7 +2439,8 @@
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
                 adTotal ? { name: '광고비', amt: adTotal,
-                    parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advCp ? part('쿠팡 예상', mn.advCp) : null].filter(Boolean) } : null
+                    parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advSale ? part('배민 타임세일', mn.advSale) : null,
+                        mn.advCp ? part('쿠팡 예상', mn.advCp) : null].filter(Boolean) } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
             // 표에 찍을 비율 — 흑자면 [비용들 + 손에 남은 돈], 적자면 [비용들]이 합쳐서 100.0%
             const rowPcts = pctsTo100(rows.map(r => r.amt).concat(profit >= 0 ? [profit] : []), pctBase);
@@ -2486,14 +2487,15 @@
             const act = (orders || []).filter(o => o && !o.cancelled && !o.prepaid);
             if (!act.length) { box.innerHTML = ''; return; }
 
-            let gross = 0, fee = 0, mat = 0, adBm = 0, adCp = 0;
+            let gross = 0, fee = 0, mat = 0, adBm = 0, adCp = 0, adSale = 0;
             const feePlat = {};    // 플랫폼별 수수료 (광고비 제외 — 광고비는 아래 별도 행)
             act.forEach(o => {
                 const r = orderNet(o, dateStr);
                 gross += o.amount;
                 fee += r.fee;
                 mat += orderCost(o, dateStr);
-                if (String(o.channel || '').indexOf('쿠팡') === 0) adCp += r.ad; else adBm += r.ad;
+                adSale += r.sale;
+                if (String(o.channel || '').indexOf('쿠팡') === 0) adCp += r.ad - r.sale; else adBm += r.ad - r.sale;
                 const pf = platformOf(o.channel);
                 feePlat[pf] = (feePlat[pf] || 0) + (r.fee - r.ad);
             });
@@ -2501,7 +2503,7 @@
             const labor = laborForDate(dateStr);
             const fixedRows = dailyFixedItems(dateStr);   // 월세·관리비·가스·식용유 하루치
             const fixed = fixedRows.reduce((s, r) => s + r.amt, 0);
-            const adTotal = adBm + adCp;
+            const adTotal = adBm + adCp + adSale;
             const profit = net - mat - labor - fixed;
 
             const F = n => Math.round(n).toLocaleString();
@@ -2530,7 +2532,8 @@
                 opsAmt ? { name: '운영비', amt: opsAmt, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 adTotal ? {
                     name: '광고비', amt: adTotal,
-                    parts: [adBm ? part('배민', adBm) : null, adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
+                    parts: [adBm ? part('배민', adBm) : null, adSale ? part('배민 타임세일', adSale) : null,
+                        adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
                 } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
             // 표에 찍을 비율 — 흑자면 [비용들 + 손에 남은 돈], 적자면 [비용들]이 합쳐서 100.0%
@@ -2577,7 +2580,7 @@
                     if (!od || !od.orders) { _dayMarginCache[ds] = null; return; }
                     let sum = 0;
                     od.orders.filter(o => o && !o.cancelled && !o.prepaid)
-                        .forEach(o => { sum += orderNet(o).net - orderCost(o, ds); });
+                        .forEach(o => { sum += orderNet(o, ds).net - orderCost(o, ds); });
                     _dayMarginCache[ds] = sum - laborForDate(ds) - dailyFixedCost(ds);
                 }
                 const mg = _dayMarginCache[ds];
@@ -3109,18 +3112,34 @@
         }
 
         // 주문 1건의 수수료 분해: 중개 + 결제 + 배달비 + 광고 + 부가세(합의 10%)
+        // 가게가 부담하는 앱 할인(배민 타임세일 등). fees.json store_discounts 에 적힌 채널·기간의 주문만 해당.
+        // 할인액은 POS의 SPIDER_ORDER.DISCOUNT_AMOUNT(order.discount). 기간 밖 할인은 플랫폼이 지원한 것이라 무시한다.
+        function storeDiscountOf(order, dateStr) {
+            const d = +order.discount || 0;
+            const list = (feesConfig && feesConfig.store_discounts) || [];
+            if (!d || !list.length) return 0;
+            const ds = dateStr || todayStr();
+            const ch = String(order.channel || '');
+            const hit = list.find(s => s && ch.indexOf(s.channel_prefix || '\u0000') === 0
+                && (!s.from || ds >= s.from) && (!s.to || ds <= s.to));
+            return hit ? d : 0;
+        }
+
         function orderNet(order, dateStr) {
             const f = feeFor(order.channel, dateStr);
-            const med = Math.round(order.amount * f.med / 100);
-            const pay = Math.round(order.amount * f.pay / 100);
+            // 가게 부담 할인은 광고비로 본다(매출은 할인 전 금액 그대로). 중개·결제수수료는 할인 뒤 금액에 붙는다.
+            const sale = storeDiscountOf(order, dateStr);
+            const base = order.amount - sale;
+            const med = Math.round(base * f.med / 100);
+            const pay = Math.round(base * f.pay / 100);
             const del = f.del;
-            const ad = Math.round(order.amount * f.ad / 100);
+            const ad = Math.round(order.amount * f.ad / 100) + sale;
             // 부가세는 중개·결제·배달비에만 붙는다. 광고비에는 안 붙음 —
             // 쿠팡 정산서가 "부가세 1 (중개이용료·배달비·결제대행사 수수료)"로 명시하고 있고,
             // 광고비는 부가세까지 포함된 최종 금액으로 차감된다 (2026-09-11 정산서 실측).
             const vat = Math.round((med + pay + del) * 0.1);
             const fee = med + pay + del + ad + vat;
-            return { med: med, pay: pay, del: del, ad: ad, vat: vat, fee: fee, net: order.amount - fee };
+            return { med: med, pay: pay, del: del, ad: ad, sale: sale, vat: vat, fee: fee, net: order.amount - fee };
         }
 
         // 채널별 실수령 표 — '오늘' 탭 맨 아래. renderDay 가 이미 읽어온 주문을 그대로 쓴다.
@@ -3816,7 +3835,7 @@
             // 지난 달은 더 이상 바뀌지 않으므로 캐시 (달력에서 달을 넘길 때마다 재조회하지 않게)
             if (ym !== curYm && _monthNetCache[ym]) return _monthNetCache[ym];
             const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
-            let gross = 0, net = 0, mat = 0, days = 0, adv = 0, advBm = 0, advCp = 0;
+            let gross = 0, net = 0, mat = 0, days = 0, adv = 0, advBm = 0, advCp = 0, advSale = 0;
             const feePlat = {};    // 플랫폼별 수수료 (광고비 제외 — 결산표에서 따로 보여준다)
             const monthDays = idx.filter(x => x.date.substring(0, 7) === ym);
 
@@ -3838,7 +3857,8 @@
                     mat += orderCost(o, d.date);
                     const a = r.ad;
                     adv += a;
-                    if (o.channel.indexOf('배달의민족') === 0) advBm += a; else advCp += a;
+                    advSale += r.sale;
+                    if (o.channel.indexOf('배달의민족') === 0) advBm += a - r.sale; else advCp += a - r.sale;
                     const pf = platformOf(o.channel);
                     feePlat[pf] = (feePlat[pf] || 0) + (r.fee - a);
                 });
@@ -3855,12 +3875,13 @@
                     mat += orderCost(o, t.date);
                     const a = r.ad;
                     adv += a;
-                    if (o.channel.indexOf('배달의민족') === 0) advBm += a; else advCp += a;
+                    advSale += r.sale;
+                    if (o.channel.indexOf('배달의민족') === 0) advBm += a - r.sale; else advCp += a - r.sale;
                     const pf = platformOf(o.channel);
                     feePlat[pf] = (feePlat[pf] || 0) + (r.fee - a);
                 });
             }
-            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp, feePlat: feePlat };
+            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp, advSale: advSale, feePlat: feePlat };
             if (ym !== curYm) _monthNetCache[ym] = r;
             return r;
         }
@@ -3970,15 +3991,21 @@
         async function saveFees() {
             const msg = document.getElementById('saveMsg');
             const channels = {};
+            // 화면에 없는 필드(rate_history·ad_pct_history·메모, 목록에 없는 채널, store_discounts)는 원본 그대로 보존
+            const orig = (feesConfig && feesConfig.channels) || {};
+            Object.keys(orig).forEach(ch => { channels[ch] = orig[ch]; });
             FEE_CHANNELS.forEach(ch => {
-                channels[ch] = {
+                channels[ch] = Object.assign({}, orig[ch] || {}, {
                     mediation_pct: parseFloat(document.getElementById('fee-med-' + ch).value) || 0,
                     payment_pct: parseFloat(document.getElementById('fee-pay-' + ch).value) || 0,
                     delivery_fixed: parseInt(document.getElementById('fee-del-' + ch).value) || 0,
                     ad_pct: parseFloat(document.getElementById('fee-ad-' + ch).value) || 0
-                };
+                });
             });
-            const payload = { note: "mediation_pct=중개(%), payment_pct=결제(%), delivery_fixed=배달비(원), 부가세는 합의 10% 자동", channels: channels };
+            const payload = Object.assign({}, feesConfig || {}, {
+                note: (feesConfig && feesConfig.note) || "mediation_pct=중개(%), payment_pct=결제(%), delivery_fixed=배달비(원), 부가세는 합의 10% 자동",
+                channels: channels
+            });
             try {
                 const resp = await fetch('./api/save-fees', {
                     method: 'POST',
