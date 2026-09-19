@@ -1635,6 +1635,7 @@
                 meta.data.forEach((bar, i) => {
                     const v = +data[i];
                     if (!(v > 0)) return;                      // 0건은 굳이 안 찍는다
+                    if (opt.skip && opt.skip(i)) return;       // 그래프마다 숫자를 뺄 칸 지정 (예: 누적이 안 늘어난 시간)
                     const s = String(opt.fmt ? opt.fmt(v) : v);
                     const y = bar.y - 7;                       // 추세선 점(반지름 2.5) 위로 띄운다
                     ctx.lineWidth = 3; ctx.strokeStyle = '#fff';   // 흰 테두리 — 선이 지나가도 숫자가 읽히게
@@ -1687,22 +1688,26 @@
                     hData.push(heat[dowSel][h]);
                 }
             }
-            // 막대 + 얇은 추세선 겹쳐 그리기 (시간대별 크기는 막대로, 흐름은 선으로)
+            // 막대 = 그 시각까지 쌓인 누적 주문(왼쪽 축), 선 = 그 시간대 주문(오른쪽 축).
+            // 누적은 "지금쯤이면 평소 몇 건 들어와 있어야 하나"를 바로 읽으려고, 선은 몰리는 시간을 보려고.
+            const cum = [];
+            hData.reduce((s, v, i) => (cum[i] = Math.round((s + v) * 10) / 10), 0);
             drawChart('hourlyChart', {
                 type: 'bar',
                 data: {
                     labels: hLabels,
                     datasets: [
                         {
-                            label: '평균 주문 건수',
-                            data: hData,
+                            label: '누적 주문',
+                            data: cum,
                             backgroundColor: 'rgba(240,140,66,0.5)',
                             borderRadius: 3,
                             order: 2
                         },
                         {
                             type: 'line',
-                            label: '흐름',
+                            label: '시간대 주문',
+                            yAxisID: 'y1',
                             data: hData,
                             borderColor: '#a8481a',
                             borderWidth: 1.5,
@@ -1721,15 +1726,22 @@
                     animation: false,
                     plugins: {
                         legend: { display: false },
-                        // 같은 값을 두 번 그리므로 툴팁은 막대 것만 보여준다
+                        // 툴팁 한 줄에 누적과 그 시간대 건수를 같이
                         tooltip: {
                             filter: item => item.datasetIndex === 0,
-                            callbacks: { label: ctx => `평균 ${(ctx.parsed.y || 0).toFixed(1)}건` }
+                            callbacks: {
+                                label: ctx => `누적 ${cum[ctx.dataIndex].toFixed(1)}건 · 이 시간 ${(+hData[ctx.dataIndex] || 0).toFixed(1)}건`
+                            }
                         }
                     },
-                    barLabels: { fmt: v => v.toFixed(1) },
+                    // 그 시간에 주문이 없으면 누적이 그대로라 같은 숫자가 반복된다 → 그런 칸은 숫자 생략
+                    barLabels: { fmt: v => v.toFixed(1), skip: i => !(+hData[i] > 0) },
                     layout: { padding: { top: 18 } },          // 가장 높은 막대의 숫자가 잘리지 않게
-                    scales: { y: { ticks: { callback: v => v + '건' } } }
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => v + '건' } },
+                        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false },
+                              ticks: { callback: v => v + '건', color: '#a8481a' } }
+                    }
                 }
             });
         }
@@ -1990,7 +2002,7 @@
             document.getElementById('avgOrderValue').textContent = avgValue.toLocaleString() + '원';
 
             // 총매출/포장/배달 카드에 예상 마진 + 마진률 병기 (인건비 포함)
-            Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]).then(() => {
+            Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog(), loadHeat()]).then(() => {
                 let netSum = 0, matSum = 0;
                 const byType = { takeout: { margin: 0, gross: 0 }, delivery: { margin: 0, gross: 0 } };
                 activeOrders.forEach(o => {
@@ -2001,9 +2013,10 @@
                     t.margin += n - c;
                     t.gross += o.amount;
                 });
-                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비(광고비 등)
-                const laborDay = laborForDate(effDate);
-                const adDay = dailyFixedCost(effDate);
+                // 하루 인건비 (해당 날짜에 근무하는 직원만, 시급 x 시간) + 하루치 고정비 — 영업 중이면 경과율만큼만
+                const prog = dayProgress(effDate);
+                const laborDay = Math.round(laborForDate(effDate) * prog);
+                const adDay = dailyFixedItems(effDate, prog).reduce((s, r) => s + r.amt, 0);
                 const margin = netSum - matSum - laborDay - adDay;
                 const rate = totalAmount > 0 ? (margin / totalAmount * 100).toFixed(1) : 0;
                 document.getElementById('dayNet').innerHTML =
@@ -2465,7 +2478,7 @@
             const box = document.getElementById('dayPL');
             if (!box) return;
             if (DASH_ROLE === 'staff') { box.innerHTML = ''; return; }   // 결산은 관리자 전용
-            await Promise.all([loadFees(), loadMenuCosts(), loadCosts()]);
+            await Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadHeat()]);
             const act = (orders || []).filter(o => o && !o.cancelled && !o.prepaid);
             if (!act.length) { box.innerHTML = ''; return; }
 
@@ -2481,8 +2494,11 @@
                 feePlat[pf] = (feePlat[pf] || 0) + (r.fee - r.ad);
             });
             const net = gross - fee;                 // 정산 실수령
-            const labor = laborForDate(dateStr);
-            const fixed = dailyFixedCost(dateStr);   // 월세·관리비·가스·식용유를 영업일수로 나눈 하루치
+            // 영업 중이면 인건비·고정비는 하루 경과율만큼만 (마감 시각이 지나면 100%)
+            const prog = dayProgress(dateStr);
+            const labor = Math.round(laborForDate(dateStr) * prog);
+            const fixedRows = dailyFixedItems(dateStr, prog);   // 월세·관리비·가스·식용유 하루치
+            const fixed = fixedRows.reduce((s, r) => s + r.amt, 0);
             const adTotal = adBm + adCp;
             const profit = net - mat - labor - fixed;
 
@@ -2490,14 +2506,6 @@
             const pct = v => gross > 0 ? (v / gross * 100).toFixed(1) : '0.0';
             const part = (label, v) => `${label} ${F(v)}원 <span class="pl-parts-pct">${pct(v)}%</span>`;
 
-            // 고정비는 한 줄로 뭉치지 않고 월세·관리비·가스비·식용유를 각각 하루치로 풀어서 보여준다.
-            // (합계는 dailyFixedCost와 같은 방식으로 항목별 반올림 → 손에 남은 돈이 위 카드와 어긋나지 않는다)
-            const ymD = dateStr.substring(0, 7);
-            const bdD = bizDaysInMonth(ymD) || 26;
-            const fixedRows = (costsConfig.fixed || []).map(f => ({
-                name: f.name,
-                amt: Math.round(fixedAmountFor(f, ymD).amt / bdD)
-            })).filter(r => r.amt > 0);
 
             // 월 결산과 같은 묶음: 식용유는 재료비에, 월세·관리비·가스비는 운영비에
             const isOil = r => /식용유|기름/.test(r.name);
@@ -2513,8 +2521,8 @@
                     parts: Object.keys(feePlat).filter(k => feePlat[k] > 0)
                         .sort((a, b) => feePlat[b] - feePlat[a]).map(k => part(k, feePlat[k]))
                 },
-                { name: '인건비', amt: labor },
-                opsAmt ? { name: '운영비', amt: opsAmt, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
+                { name: '인건비', amt: labor, pro: prog < 1 },
+                opsAmt ? { name: '운영비', amt: opsAmt, pro: prog < 1, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 adTotal ? {
                     name: '광고비', amt: adTotal,
                     parts: [adBm ? part('배민', adBm) : null, adCp ? part('쿠팡 예상', adCp) : null].filter(Boolean)
@@ -2531,6 +2539,7 @@
                     ${rows.map(r => {
                         let label = r.name;
                         if (r.note) label += ` <span class="pl-inline-note">${r.note}</span>`;
+                        if (r.pro) label += ` <span class="pl-pro">[${Math.round(prog * 100)}%]</span>`;
                         if (r.parts && r.parts.length) label += `<span class="pl-parts">${r.parts.map(x => `<span class="pl-part">${x}</span>`).join('')}</span>`;
                         return `<tr class="pl-minus">
                             <td class="pl-label">${label}</td>
@@ -2544,6 +2553,7 @@
                 </table>
                 <div class="cal-pl-note">
                     ${act.length}건 · 객단가 ${F(gross / act.length)}원${isToday ? ' · <b>영업 중</b>이라 마감까지 더 올라갑니다' : ''}
+                    ${prog < 1 ? `<br>· 인건비·운영비·식용유는 하루치의 <b>${Math.round(prog * 100)}%</b>만 잡았습니다 — 평소 ${'일월화수목금토'[d.getDay()]}요일 이 시각까지 들어오는 주문 비율. 마감하면 100%가 됩니다.` : ''}
                 </div>
             </div>`;
         }
@@ -3758,6 +3768,41 @@
         //   (예전에는 daily:true인 항목만 골라 /30으로 나눠서 월세 990,000원이 통째로 빠져 있었다.)
         //   나누는 값도 30일이 아니라 실제 영업일 수 — 월요일에 쉬는 만큼 영업일이 더 부담해야 계산이 맞는다.
         //   배민 광고비는 그날 실비가 있으면 그 값을 그대로 쓴다.
+        // 진행 중인 날의 '하루 경과율' — 평소 그 요일에 지금 시각까지 하루 주문의 몇 %가 들어오는지.
+        // 영업 중에 하루치 인건비·운영비를 통째로 빼면 점심때 5건 매출에 고정비 60%, 순익 −90% 같은
+        // 말이 안 되는 비율이 나온다. 그래서 오늘은 고정비를 이 비율만큼만 잡고, 마감 때 100%가 된다.
+        // 시간대별 주문 그래프와 같은 데이터(marketing_stats.heat_wavg, 최근 4주 1.0 / 4~8주 0.5 가중)를 쓴다.
+        let _heatWavg = null;
+        async function loadHeat() {
+            if (_heatWavg === null) {
+                const m = await loadJson('./processed/marketing_stats.json');
+                _heatWavg = (m && m.heat_wavg) || false;
+            }
+            return _heatWavg;
+        }
+        function dayProgress(dateStr) {
+            if (dateStr !== todayStr() || !_heatWavg) return 1;       // 지난 날은 항상 하루치 전부
+            const row = _heatWavg[new Date(dateStr + 'T00:00:00').getDay()] || [];
+            const tot = row.reduce((s, v) => s + (+v || 0), 0);
+            if (!(tot > 0)) return 1;
+            const now = new Date();
+            const h = now.getHours();
+            let done = 0;
+            for (let i = 0; i < h; i++) done += (+row[i] || 0);
+            done += (+row[h] || 0) * (now.getMinutes() / 60);         // 지금 시간대는 분 단위로 비례
+            return Math.min(1, Math.max(0, done / tot));
+        }
+        // 하루치 고정비를 항목별로 (prog = 하루 경과율, 기본 1). 항목별로 반올림해 결산표와 카드가 원 단위까지 같게.
+        function dailyFixedItems(dateStr, prog) {
+            const ym = dateStr.substring(0, 7);
+            const bd = bizDaysInMonth(ym) || 26;
+            const k = prog == null ? 1 : prog;
+            return (costsConfig.fixed || []).map(f => ({
+                name: f.name,
+                amt: Math.round(fixedAmountFor(f, ym).amt / bd * k)
+            })).filter(r => r.amt > 0);
+        }
+
         function dailyFixedCost(dateStr) {
             const ds = dateStr || todayStr();
             const ym = ds.substring(0, 7);
