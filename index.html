@@ -3736,21 +3736,35 @@
             return { amt: f.amount || 0, est: !!f.varies };
         }
 
-        // 하루 정액으로 나가는 광고비(네이버 플레이스 등) — costs.json daily_ads [{name, amount_per_day, from, to?, monthly?}].
-        // 주문과 상관없이 나가는 돈이라 주문별 수수료(orderNet)가 아니라 여기서 더한다. 휴무일엔 0.
-        //   monthly["YYYY-MM"] = 그 달 실제 지출액이 있으면 그걸 영업일로 나눠 쓴다(정확).
-        //   없으면 amount_per_day = 하루 한도. 한도는 '이보다 적게 나온다'는 뜻이므로 이 값을 넘겨 잡지 않는다.
+        // 하루 정액으로 나가는 광고비(네이버 플레이스 등) — costs.json daily_ads
+        // [{name, amount_per_day, from, to?, every_day?, monthly?}]. 주문과 상관없이 나가는 돈이라
+        // 주문별 수수료(orderNet)가 아니라 여기서 더한다. 결산에 싣는 건 영업일뿐(휴무일은 매출이 없으므로).
+        //   1) monthly["YYYY-MM"] = 그 달 실제 지출액을 알면 그걸 그 달 영업일수로 나눈다 (가장 정확).
+        //   2) every_day=true = 휴무일에도 광고가 돌아간다 → 그 달 전액(하루치 × 광고한 날수)을 영업일이 나눠 진다.
+        //      그래서 하루치가 amount_per_day보다 커 보일 수 있다(월세를 영업일로 나누는 것과 같은 이치).
+        //   3) 그 외 = 영업일에만 하루치.
         function dailyAdItems(dateStr) {
             if (!costsConfig || !isBizDay(dateStr)) return [];
             const ym = dateStr.substring(0, 7);
+            const last = new Date(+ym.substring(0, 4), +ym.substring(5, 7), 0).getDate();
+            const active = (a, iso) => (!a.from || iso >= a.from) && (!a.to || iso <= a.to);
             return (costsConfig.daily_ads || [])
-                .filter(a => a && (!a.from || dateStr >= a.from) && (!a.to || dateStr <= a.to))
+                .filter(a => a && active(a, dateStr))
                 .map(a => {
+                    const bd = bizDaysInMonth(ym) || 1;
                     if (a.monthly && a.monthly[ym] != null) {
-                        const bd = bizDaysInMonth(ym) || 1;
                         return { name: a.name, amt: Math.round((+a.monthly[ym] || 0) / bd), est: false };
                     }
-                    return { name: a.name, amt: Math.round(+a.amount_per_day || 0), est: true };
+                    const per = +a.amount_per_day || 0;
+                    if (!a.every_day) return { name: a.name, amt: Math.round(per), est: true };
+                    let cal = 0, biz = 0;
+                    for (let d = 1; d <= last; d++) {
+                        const iso = ym + '-' + String(d).padStart(2, '0');
+                        if (!active(a, iso)) continue;
+                        cal++;
+                        if (isBizDay(iso)) biz++;
+                    }
+                    return { name: a.name, amt: biz ? Math.round(per * cal / biz) : 0, est: true };
                 })
                 .filter(a => a.amt > 0);
         }
