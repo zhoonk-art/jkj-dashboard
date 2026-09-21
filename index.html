@@ -2682,8 +2682,29 @@
             const UM = Object.assign({ hours_full: 45, birds_full: 100, weekday_hours: 6, weekend_hours: 10 },
                                      (_oilLedger && _oilLedger.usage_model) || {});
             const hoursOn = ds => { const g = new Date(ds + 'T00:00:00').getDay(); return (g === 0 || g === 6) ? UM.weekend_hours : UM.weekday_hours; };
+            cycles.forEach(c => { c.hours = 0; for (let d = c.from; d <= c.to; d = plus(d, 1)) if (isBizDay(d)) c.hours += hoursOn(d); });
+            // 자동 보정 — 폐유 기록이 5회 이상이면 각 사이클이 100%에 가장 가깝도록(최소제곱) 두 기준값을 다시 푼다.
+            // a·시간 + b·마리 ≈ 1 을 사이클마다 세우고 정규방정식으로 a, b를 구함 → hours_full = 1/a, birds_full = 1/b.
+            // usage_model.exclude 에 적힌 폐유 날짜(이물질 등 사정상 간 날)의 사이클은 빼고, 결과가 비현실적이면 기본값 유지.
+            const excl = UM.exclude || [];
+            const fitSet = cycles.filter(c => excl.indexOf(c.to) < 0);
+            const MIN_FIT = 5;
+            let fitNote = `폐유 기록 ${fitSet.length}/${MIN_FIT}회 — ${MIN_FIT}회부터 자동 보정`;
+            if (fitSet.length >= MIN_FIT) {
+                let hh = 0, hb = 0, bb = 0, h1 = 0, b1 = 0;
+                fitSet.forEach(c => { hh += c.hours * c.hours; hb += c.hours * c.total; bb += c.total * c.total; h1 += c.hours; b1 += c.total; });
+                const det = hh * bb - hb * hb;
+                const a = det ? (h1 * bb - b1 * hb) / det : 0, b = det ? (hh * b1 - hb * h1) / det : 0;
+                const hf = a > 0 ? 1 / a : 0, bf = b > 0 ? 1 / b : 0;
+                if (hf >= 15 && hf <= 200 && bf >= 30 && bf <= 300) {
+                    UM.hours_full = Math.round(hf); UM.birds_full = Math.round(bf);
+                    fitNote = `폐유 기록 ${fitSet.length}회로 자동 보정됨`;
+                } else {
+                    fitNote = `폐유 기록 ${fitSet.length}회 — 보정 결과가 불안정해 기본값 사용`;
+                }
+            }
             const hPct = h => h / UM.hours_full * 100, bPct = b => b / UM.birds_full * 100;
-            cycles.forEach(c => { c.hours = 0; for (let d = c.from; d <= c.to; d = plus(d, 1)) if (isBizDay(d)) c.hours += hoursOn(d); c.pct = hPct(c.hours) + bPct(c.total); });
+            cycles.forEach(c => { c.pct = hPct(c.hours) + bPct(c.total); });
             const curHours = curDays.reduce((a, d) => a + hoursOn(d), 0);
             const curPct = hPct(curHours) + bPct(cur.total);
             const avgPct = cycles.length ? cycles.reduce((a, c) => a + c.pct, 0) / cycles.length : 100;
@@ -2758,7 +2779,7 @@
                         <td>${cycles.length ? F1(cycles.reduce((a, c) => a + c.total, 0) / cycles.length) : '-'}</td>
                         <td class="ord-kg">${P0(avgPct)}</td></tr>
                 </table>
-                <div class="ord-note">사용률 = 켜둔 시간 ÷ ${UM.hours_full}h + 튀긴 마리 ÷ ${UM.birds_full}마리 (평일 ${UM.weekday_hours}h · 주말 ${UM.weekend_hours}h 영업 기준, 8~9월 폐유 기록으로 맞춤)</div>
+                <div class="ord-note">사용률 = 켜둔 시간 ÷ ${UM.hours_full}h + 튀긴 마리 ÷ ${UM.birds_full}마리 (평일 ${UM.weekday_hours}h · 주말 ${UM.weekend_hours}h 영업 기준) · ${fitNote}</div>
                 ${IS_LOCAL ? `<button class="oil-btn" onclick="saveOilChange()">오늘 마감 후 폐유함</button>`
                             : `<div class="ord-note">폐유 기록은 매장 PC의 버튼으로 하거나 Claude에게 알려주세요 (휴대폰 화면은 읽기 전용)</div>`}`;
         }
