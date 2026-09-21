@@ -2742,7 +2742,8 @@
                     <tr class="ord-total"><td style="text-align:left;">평균</td><td>${cycles.length ? F1(cycles.reduce((a, c) => a + c.days, 0) / cycles.length) + '일' : '-'}</td>
                         <td class="ord-kg">${F1(avg)}</td></tr>
                 </table>
-                ${IS_LOCAL ? `<button class="oil-btn" onclick="saveOilChange()">오늘 마감 후 폐유함</button>` : ''}`;
+                ${IS_LOCAL ? `<button class="oil-btn" onclick="saveOilChange()">오늘 마감 후 폐유함</button>`
+                            : `<div class="ord-note">폐유 기록은 매장 PC의 버튼으로 하거나 Claude에게 알려주세요 (휴대폰 화면은 읽기 전용)</div>`}`;
         }
 
         // 매장 PC에서만: 오늘 날짜를 폐유 기록에 추가
