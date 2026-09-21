@@ -993,6 +993,21 @@
         .ord-table tr.ord-total .ord-day { background: #501100; }
         .ord-note { font-size: 11.5px; color: #a09890; margin-top: 7px; line-height: 1.5; }
 
+        /* 폐유 주기 카드 */
+        .oil-now { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+        .oil-now-big { font-size: 26px; font-weight: 800; color: #501100; }
+        .oil-now-sub { font-size: 12px; color: #9a8f85; }
+        .oil-bar { position: relative; height: 10px; background: #f2ece7; border-radius: 6px; margin: 8px 0 4px; overflow: hidden; }
+        .oil-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; }
+        .oil-scale { display: flex; justify-content: space-between; font-size: 11px; color: #b0a69c; }
+        .oil-reco { margin: 10px 0 12px; padding: 9px 11px; border-radius: 8px; font-size: 13px; font-weight: 700; line-height: 1.45; }
+        .oil-reco small { display: block; font-weight: 400; font-size: 11.5px; margin-top: 2px; opacity: 0.85; }
+        .oil-ok { background: #ebf7ee; color: #2b8a3e; }
+        .oil-warn { background: #fff4e0; color: #b35c00; }
+        .oil-now-reco { background: #fdecec; color: #c92a2a; }
+        .oil-btn { width: 100%; margin-top: 10px; padding: 9px; font-size: 13px; font-weight: 700; color: #fff;
+            background: #8a4a1f; border: none; border-radius: 8px; cursor: pointer; }
+
 
         .fee-table tr.menu-sec td {
             background: #f6f2ef;
@@ -1363,6 +1378,10 @@
                 <div class="chart-card">
                     <h3>📦 발주 추천</h3>
                     <div id="chickenDowNote"></div>
+                </div>
+                <div class="chart-card">
+                    <h3>🛢️ 폐유 주기</h3>
+                    <div id="oilCycleBox"></div>
                 </div>
                 <div class="chart-card">
                     <h3>🍗 주간 닭 사용량</h3>
@@ -2586,6 +2605,165 @@
             return s.length >= 4 ? s.slice(-4) : s;
         }
 
+        // 한 주문에서 튀긴 양을 '마리'로 — 닭 반=0.5·한=1·두=2, 새우 6p=0.5·12p=1·24p=2.
+        // 메뉴명·옵션을 읽는 규칙은 orderCost()와 같다(사이즈가 옵션이나 네이버식 별도 줄로 올 수 있음).
+        function birdsOf(order) {
+            const menus = order.menus || order.items || [];
+            const SZ = /(반마리|한마리|두마리)/, SZ_LINE = /^\s*(반마리|한마리|두마리)/;
+            const V = { '반마리': 0.5, '한마리': 1, '두마리': 2 };
+            const so = menus.find(m => m.is_option && SZ.test(m.name)) || menus.find(m => !m.is_option && SZ_LINE.test(m.name));
+            const optSize = so ? so.name.match(SZ)[1] : null;
+            let c = 0, s = 0;
+            menus.forEach(m => {
+                if (m.is_option) return;
+                const name = m.name, qty = m.qty || 1;
+                if (/다음에|주세요|빼주|리뷰|껍질/.test(name) || SZ_LINE.test(name)) return;
+                const banban = /반\s*\/\s*반/.test(name), ns = name.match(SZ), size = ns ? ns[1] : optSize;
+                if (/닭|후라이드|양념/.test(name) && !/소스|시즈닝|토핑/.test(name) && (size || banban)) {
+                    c += (V[size || (banban ? '한마리' : '반마리')] || 0.5) * qty;
+                }
+                if (/새우/.test(name)) {
+                    const sp = menus.find(x => x.is_option && /(24|12|6)\s*p/i.test(x.name));
+                    const mm = (name + ' ' + (sp ? sp.name : '')).match(/(24|12|6)\s*p/i);
+                    s += (mm ? ({ '24': 2, '12': 1, '6': 0.5 })[mm[1]] : 0.5) * qty;
+                }
+            });
+            return { c: c, s: s };
+        }
+
+        // 폐유 주기 — oil_ledger.json 의 waste_dates(마감 후 폐유한 날) 사이에 튀긴 마리 수로
+        // 사이클 평균을 내고, 지금 기름이 얼마나 쓰였는지·언제 갈지 추천한다.
+        // 추천: 평균 도달 → 오늘 폐유 / 다음 영업일까지 쓰면 지금까지 최대치 초과 → 오늘 폐유 권장 / 그 외 → 더 써도 됨.
+        let _oilLedger = null;
+        async function renderOilCycle(m) {
+            const box = document.getElementById('oilCycleBox');
+            if (!box) return;
+            await loadCosts();
+            _oilLedger = await loadJson('./processed/oil_ledger.json');
+            const wd = (((_oilLedger && _oilLedger.waste_dates) || [])).slice().sort();
+            if (!wd.length) { box.innerHTML = '<div class="empty-note">폐유 기록이 없습니다</div>'; return; }
+
+            const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const plus = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return fmt(d); };
+            const md = iso => (+iso.slice(5, 7)) + '/' + (+iso.slice(8));
+            const dowName = iso => '일월화수목금토'[new Date(iso + 'T00:00:00').getDay()];
+            const today = todayStr();
+            // after 다음 날부터 until 까지의 영업일
+            const bizAfter = (after, until) => { const a = []; for (let d = plus(after, 1); d <= until; d = plus(d, 1)) if (isBizDay(d)) a.push(d); return a; };
+            const cache = {};
+            const birdsOn = async ds => {
+                if (cache[ds]) return cache[ds];
+                const dd = await loadDayData(ds);
+                let c = 0, s = 0;
+                ((dd && dd.orders) || []).filter(o => o && !o.cancelled && !o.prepaid)
+                    .forEach(o => { const b = birdsOf(o); c += b.c; s += b.s; });
+                return (cache[ds] = { c: c, s: s });
+            };
+            const sumDays = async days => {
+                let c = 0, s = 0;
+                for (const d of days) { const b = await birdsOn(d); c += b.c; s += b.s; }
+                return { c: c, s: s, total: c + s };
+            };
+
+            // 끝난 사이클들
+            const cycles = [];
+            for (let i = 1; i < wd.length; i++) {
+                const days = bizAfter(wd[i - 1], wd[i]);
+                if (!days.length) continue;
+                const b = await sumDays(days);
+                cycles.push(Object.assign({ from: days[0], to: wd[i], days: days.length }, b));
+            }
+            // 지금 쓰는 기름
+            const curDays = bizAfter(wd[wd.length - 1], today);
+            const cur = await sumDays(curDays);
+
+            const totals = cycles.map(c => c.total);
+            const avg = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : 55;
+            const max = totals.length ? Math.max.apply(null, totals) : avg;
+            const min = totals.length ? Math.min.apply(null, totals) : avg;
+
+            // 다음 영업일 예상 마리 — 요일별 닭 사용량(kg, 최근 4주 1.0·4~8주 0.5 가중) ÷ 한마리 0.7kg × (1 + 새우 비율)
+            let next = plus(today, 1); for (let k = 0; k < 14 && !isBizDay(next); k++) next = plus(next, 1);
+            let expected = null;
+            const cd = m && m.chicken_daily;
+            if (cd) {
+                const t0 = new Date(today + 'T00:00:00'), dw = new Date(next + 'T00:00:00').getDay();
+                let ws = 0, wk = 0;
+                Object.keys(cd).forEach(d => {
+                    const kg = +cd[d]; if (!(kg > 0)) return;
+                    if (new Date(d + 'T00:00:00').getDay() !== dw) return;
+                    const age = (t0 - new Date(d + 'T00:00:00')) / 604800000;
+                    const w = age < 4 ? 1 : age < 8 ? 0.5 : 0; if (!w) return;
+                    ws += kg * w; wk += w;
+                });
+                const allC = cycles.reduce((a, c) => a + c.c, cur.c), allS = cycles.reduce((a, c) => a + c.s, cur.s);
+                const ratio = allC > 0 ? allS / allC : 0.15;
+                if (wk > 0) expected = (ws / wk) / 0.7 * (1 + ratio);
+            }
+
+            const F1 = v => (Math.round(v * 10) / 10).toString();
+            const gap = (new Date(next + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000;
+            const nextLabel = gap === 1 ? `내일(${dowName(next)})` : `다음 영업일 ${md(next)}(${dowName(next)})`;
+            let cls, head, sub;
+            if (!curDays.length) {
+                cls = 'oil-ok'; head = '새 기름'; sub = `${nextLabel}부터 사용`;
+            } else if (cur.total >= avg) {
+                cls = 'oil-now-reco'; head = '오늘 마감 후 폐유 추천';
+                sub = `평균 ${F1(avg)}마리에 도달했습니다`;
+            } else if (expected != null && cur.total + expected > max) {
+                cls = 'oil-warn'; head = '오늘 마감 후 폐유 권장';
+                sub = `${nextLabel}까지 쓰면 약 ${F1(cur.total + expected)}마리 — 지금까지 최대(${F1(max)})를 넘습니다`;
+            } else {
+                cls = 'oil-ok'; head = `${nextLabel}까지 사용 가능`;
+                sub = expected != null ? `${nextLabel} 예상 약 ${F1(expected)}마리 → 합계 약 ${F1(cur.total + expected)}마리 (평균 ${F1(avg)})`
+                                       : `평균 ${F1(avg)}마리까지 약 ${F1(avg - cur.total)}마리 남음`;
+            }
+            const pctFill = Math.min(100, max > 0 ? cur.total / max * 100 : 0);
+            const fillColor = cls === 'oil-now-reco' ? '#e03131' : cls === 'oil-warn' ? '#f08c00' : '#2f9e44';
+            const avgPos = max > 0 ? Math.min(100, avg / max * 100) : 0;
+
+            box.innerHTML = `
+                <div class="oil-now">
+                    <div><span class="oil-now-big">${F1(cur.total)}</span> <span class="oil-now-sub">마리</span></div>
+                    <div class="oil-now-sub">${curDays.length ? `${md(curDays[0])}부터 ${curDays.length}영업일째 · 닭 ${F1(cur.c)} · 새우 ${F1(cur.s)}` : '아직 안 씀'}</div>
+                </div>
+                <div class="oil-bar">
+                    <div class="oil-fill" style="width:${pctFill}%; background:${fillColor};"></div>
+                    <div style="position:absolute; left:${avgPos}%; top:-2px; bottom:-2px; width:2px; background:#501100;"></div>
+                </div>
+                <div class="oil-scale"><span>0</span><span>평균 ${F1(avg)}</span><span>최대 ${F1(max)}</span></div>
+                <div class="oil-reco ${cls}">${head}<small>${sub}</small></div>
+                <table class="ord-table">
+                    <tr class="ord-head"><td>기간</td><td>영업일</td><td>마리</td></tr>
+                    ${cycles.slice().reverse().slice(0, 6).map(c => `<tr>
+                        <td style="text-align:left; width:auto;">${md(c.from)}~${md(c.to)}</td>
+                        <td>${c.days}일</td>
+                        <td class="ord-kg">${F1(c.total)}</td></tr>`).join('')}
+                    <tr class="ord-total"><td style="text-align:left;">평균</td><td>${cycles.length ? F1(cycles.reduce((a, c) => a + c.days, 0) / cycles.length) + '일' : '-'}</td>
+                        <td class="ord-kg">${F1(avg)}</td></tr>
+                </table>
+                ${IS_LOCAL ? `<button class="oil-btn" onclick="saveOilChange()">오늘 마감 후 폐유함</button>` : ''}`;
+        }
+
+        // 매장 PC에서만: 오늘 날짜를 폐유 기록에 추가
+        async function saveOilChange() {
+            const today = todayStr();
+            if (!_oilLedger) return;
+            const wd = (_oilLedger.waste_dates || []).slice();
+            if (wd.indexOf(today) >= 0) { alert('오늘은 이미 폐유로 기록돼 있습니다.'); return; }
+            if (!confirm('오늘 마감 후 폐유한 것으로 기록할까요?')) return;
+            wd.push(today); wd.sort();
+            const payload = Object.assign({}, _oilLedger, { waste_dates: wd });
+            try {
+                const resp = await fetch('./api/save-oil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                _oilLedger = payload;
+                renderOilCycle(window._mstats);
+            } catch (e) {
+                alert('저장 실패 — 매장 PC에서만 기록할 수 있습니다');
+            }
+        }
+
         // 요일별 닭 사용량 — 최근 4주는 그대로, 4~8주 전은 절반 비중, 8주보다 오래된 날은 버린다.
         // (시간대별 주문 그래프와 같은 가중치를 쓴다 — 두 그래프의 기준이 달라 헷갈리던 것을 맞췄다)
         // 막대 = 가중 평균 kg, 선 = 흐름.
@@ -2879,6 +3057,7 @@
             window._mstats = mstats;
             renderChickenDow(mstats);
             renderChickenWeek(mstats);
+            renderOilCycle(mstats);
             renderUtilCharts();
             if (mstats && (mstats.heat_wavg || mstats.heat_amount)) {
                 window._hourlyHeat = mstats.heat_wavg || mstats.heat_count_3m;
