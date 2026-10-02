@@ -3171,7 +3171,8 @@
             const ch = String(order.channel || '');
             const hit = list.find(s => s && ch.indexOf(s.channel_prefix || '\u0000') === 0
                 && (!s.from || ds >= s.from) && (!s.to || ds <= s.to));
-            return hit ? d : 0;
+            // store_share = 가게가 실제로 부담하는 비율 (배민 타임세일은 배민이 10% 지원 → 0.9)
+            return hit ? Math.round(d * (typeof hit.store_share === 'number' ? hit.store_share : 1)) : 0;
         }
 
         function orderNet(order, dateStr) {
