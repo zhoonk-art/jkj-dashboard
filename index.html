@@ -2665,6 +2665,7 @@
             };
             const byDow = [[], [], [], [], [], [], []];
             Object.keys(cd).forEach(d => {
+                if (d === todayStr()) return;            // 오늘은 평균이 아니라 실시간 보정으로 반영
                 const w = weightOf(d);
                 if (!w) return;
                 const kg = +cd[d];
@@ -2770,10 +2771,46 @@
                         run = runs.slice(at).reduce((a, b) => sumOf(b.orders) > sumOf(a.orders) ? b : a);
                         break;
                     }
-                    runs.push({ key: key, orders: r.orders });
+                    runs.push({ key: key, orders: r.orders, seed: seed });
                     seed = Math.max(0, r.end);           // 재고는 음수가 될 수 없다 (모자란 날은 그날로 끝)
                 }
                 if (!run) run = runs[0];
+
+                // ── 실시간 보정 (사장님 요청 2026-10-02) ──
+                // 오늘 지금까지 쓴 닭으로 오늘 마감까지 쓸 양을 예상하고, 평소보다 덜 쓰면(남는 닭↑) 다음 발주를 줄이고
+                // 더 쓰면 늘린다. 실제 재고는 모르므로 '추천대로 시켰다'는 가정은 그대로 두고, 오늘 사용량 차이만 이월량에 더한다.
+                // 예상 = 지금까지 + 평소 남은 몫 × (오늘 페이스). 페이스는 이른 시간일수록 1에 가깝게 눌러 하루 초반 몇 건에 휘둘리지 않게 한다.
+                let live = null;
+                const tIso = todayStr(), tDow = new Date().getDay();
+                const tLabel = names[tDow];
+                if (isBizDay(tIso) && labels.indexOf(tLabel) >= 0) {
+                    const td = await loadDayData(tIso);
+                    if (td && td.date === tIso) {
+                        let c = 0;
+                        (td.orders || []).filter(o => o && !o.cancelled && !o.prepaid).forEach(o => { c += birdsOf(o).c; });
+                        const soFar = c * 0.7;                                   // 반마리 0.35kg (chicken_daily 와 같은 기준)
+                        const heat = m.heat_wavg || m.heat_count_3m || m.heat_count;
+                        const row = heat && heat[tDow];
+                        const now = new Date(), H = now.getHours(), M = now.getMinutes();
+                        let frac = 1;
+                        if (row) {
+                            const tot = row.reduce((s, v) => s + (+v || 0), 0);
+                            let done = 0;
+                            for (let h = 0; h < 24; h++) done += h < H ? (+row[h] || 0) : h === H ? (+row[h] || 0) * M / 60 : 0;
+                            frac = tot > 0 ? Math.min(1, done / tot) : 1;
+                        }
+                        const usual = kgOf(tLabel);
+                        const pace = usual * frac > 0 ? soFar / (usual * frac) : 1;
+                        const paceAdj = 1 + (Math.max(0.5, Math.min(1.5, pace)) - 1) * Math.min(1, frac / 0.5);
+                        const proj = frac >= 1 ? soFar : soFar + usual * (1 - frac) * paceAdj;
+                        live = { soFar: soFar, usual: usual, proj: proj, frac: frac, delta: usual - proj };
+                        if (Math.abs(live.delta) >= 0.05) {
+                            const r2 = runWeek(Math.max(0, run.seed + live.delta));
+                            run = { orders: r2.orders, seed: run.seed + live.delta };
+                        }
+                    }
+                }
+
                 let totOrder = 0, totNeed = 0;
                 plan.forEach((p, i) => {
                     p.order = run.orders[i];
@@ -2792,7 +2829,10 @@
                             <td class="ord-need">${totNeed.toFixed(1)}kg</td>
                             <td class="ord-kg">${totOrder}kg</td>
                         </tr>
-                    </table>`;
+                    </table>
+                    ${live ? `<div class="ord-note">오늘(${tLabel}) ${live.frac >= 1 ? '사용' : '예상 사용'} ${live.proj.toFixed(1)}kg · 평소 ${live.usual.toFixed(1)}kg
+                        → ${Math.abs(live.delta) < 0.05 ? '평소와 같음' : live.delta > 0 ? `${live.delta.toFixed(1)}kg 더 남을 듯 → 다음 발주에서 뺌` : `${(-live.delta).toFixed(1)}kg 더 쓸 듯 → 다음 발주에 더함`}
+                        ${live.frac < 1 ? `<br><span style="color:#aaa;">지금까지 ${live.soFar.toFixed(1)}kg (평소 하루 장사의 ${Math.round(live.frac * 100)}% 지난 시점) · 통계 탭을 열 때마다 다시 계산</span>` : ''}</div>` : ''}`;
             }
 
         }
