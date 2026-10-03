@@ -2078,6 +2078,7 @@
                                 ${order.cancelled ? '<span class="cancel-badge">❌ 취소</span>' : ''}
                                 ${order.prepaid ? '<span class="cancel-badge" style="background:#7048e8;">💰 선결제</span>' : ''}
                                 ${order.recognized ? '<span class="cancel-badge" style="background:#2b8a3e;">📦 선결제 납품</span>' : ''}
+                                ${order.pending_pos ? '<span class="cancel-badge" style="background:#f08c00;" title="배달앱 주문은 들어왔지만 POS 매출에는 아직 안 올라간 주문 — 앱 주문 정보로 먼저 보여줍니다">POS 처리 전</span>' : ''}
                                 <span class="order-time-channel">
                                     ${order.channel} • ${order.time}
                                 </span>
