@@ -2724,6 +2724,10 @@
                 const kgOf = n => { const i = labels.indexOf(n); return i < 0 ? 0 : avg[i]; };
                 const BUF = 1.1;    // 여유 10% — 모자라면 그날 장사를 접어야 하므로
                 const UNIT = 10;    // 발주 단위 kg
+                // 10kg 올림: 여유 10%를 목표로 하되 최소 5%만 남으면 한 단위 더 올리지 않는다.
+                // (필요 9.2kg × 1.1 = 10.1kg 이 0.1kg 넘었다고 20kg 시키던 것 — 10kg 이면 이미 8.7% 여유)
+                const roundOrder = (want, need, tight) => Math.max(0, tight ? Math.round(want / UNIT) * UNIT
+                    : Math.ceil((want - need * (BUF - 1) / 2) / UNIT - 1e-9) * UNIT);
                 // day = 닭이 들어오는 날(= 쓰기 시작하는 날). 발주는 그 전날 밤에 넣는다.
                 const base = [
                     { day: '화', need: kgOf('화') },
@@ -2740,6 +2744,9 @@
                 let sIdx = base.findIndex(p => dowIdx[p.day] > tdow);
                 if (sIdx < 0) sIdx = 0;
                 const plan = base.slice(sIdx).concat(base.slice(0, sIdx));
+                // 입고 날짜 — 내일부터 차례로 그 요일이 처음 오는 날 (오늘 밤 발주분이 맨 위)
+                { const d = new Date(); d.setHours(0, 0, 0, 0);
+                  plan.forEach(p => { do { d.setDate(d.getDate() + 1); } while (d.getDay() !== dowIdx[p.day]); p.md = (d.getMonth() + 1) + "/" + d.getDate(); }); }
 
                 // 추천대로 시켰다고 보고, 그날 주문량에서 그날 실제 사용량(최근 4주 평균)을 빼
                 // 남는 만큼을 다음 입고일에서 깎는다. 재고를 따로 입력받지 않는다.
@@ -2751,7 +2758,7 @@
                     let l = seed;
                     const orders = plan.map(p => {
                         const want = p.need * (p.tight ? 1 : BUF) - l;
-                        const o = Math.max(0, (p.tight ? Math.round(want / UNIT) : Math.ceil(want / UNIT)) * UNIT);
+                        const o = roundOrder(want, p.need, p.tight);
                         l = l + o - p.need;
                         return o;
                     });
@@ -2768,7 +2775,13 @@
                     const key = r.orders.join();
                     const at = runs.findIndex(x => x.key === key);
                     if (at >= 0) {                       // 주기 발견
-                        run = runs.slice(at).reduce((a, b) => sumOf(b.orders) > sumOf(a.orders) ? b : a);
+                        // 합계가 같으면 고르게 나뉜 주(가장 큰 한 번 주문이 작은 주)를 고른다 — 화 20·목 0보다 화 10·목 10
+                        const lump = o => Math.max.apply(null, o.filter((v, i) => !plan[i].tight).concat([0]));   // 금(3일치)은 원래 크니 빼고 본다
+                        run = runs.slice(at).reduce((a, b) => {
+                            const sa = sumOf(a.orders), sb = sumOf(b.orders);
+                            if (sb !== sa) return sb > sa ? b : a;
+                            return lump(b.orders) < lump(a.orders) ? b : a;
+                        });
                         break;
                     }
                     runs.push({ key: key, orders: r.orders, seed: seed });
@@ -2804,9 +2817,17 @@
                         const paceAdj = 1 + (Math.max(0.5, Math.min(1.5, pace)) - 1) * Math.min(1, frac / 0.5);
                         const proj = frac >= 1 ? soFar : soFar + usual * (1 - frac) * paceAdj;
                         live = { soFar: soFar, usual: usual, proj: proj, frac: frac, delta: usual - proj };
-                        if (Math.abs(live.delta) >= 0.05) {
-                            const r2 = runWeek(Math.max(0, run.seed + live.delta));
-                            run = { orders: r2.orders, seed: run.seed + live.delta };
+                        // 여유분(필요량의 10%, 최소 1kg) 안의 차이는 원래 그 여유분이 받아내라고 있는 것 → 발주 그대로.
+                        // (0.2kg 차이로 10kg 경계를 넘어 화 20kg·목 0kg처럼 출렁이던 것을 막는다)
+                        // 넘어서면 바로 다음 발주 한 건만 고친다. 그 뒤 발주는 그날 다시 계산되므로 기본 패턴을 그대로 보여준다.
+                        const p0 = plan[0];
+                        live.tol = Math.max(1, p0.need * (BUF - 1));
+                        live.applied = Math.abs(live.delta) >= live.tol;
+                        if (live.applied) {
+                            const left = Math.max(0, run.seed + live.delta);
+                            const want = p0.need * (p0.tight ? 1 : BUF) - left;
+                            const o0 = roundOrder(want, p0.need, p0.tight);
+                            run = { orders: [o0].concat(run.orders.slice(1)), seed: run.seed };
                         }
                     }
                 }
@@ -2820,7 +2841,7 @@
                     <table class="ord-table">
                         <tr class="ord-head"><td>입고</td><td>필요량</td><td>주문량</td></tr>
                         ${plan.map(p => `<tr>
-                            <td class="ord-day">${p.day}</td>
+                            <td class="ord-day">${p.md}(${p.day})</td>
                             <td class="ord-need">${p.need.toFixed(1)}kg</td>
                             <td class="ord-kg">${p.order}kg</td>
                         </tr>`).join('')}
@@ -2831,7 +2852,7 @@
                         </tr>
                     </table>
                     ${live ? `<div class="ord-note">오늘(${tLabel}) ${live.frac >= 1 ? '사용' : '예상 사용'} ${live.proj.toFixed(1)}kg · 평소 ${live.usual.toFixed(1)}kg
-                        → ${Math.abs(live.delta) < 0.05 ? '평소와 같음' : live.delta > 0 ? `${live.delta.toFixed(1)}kg 더 남을 듯 → 다음 발주에서 뺌` : `${(-live.delta).toFixed(1)}kg 더 쓸 듯 → 다음 발주에 더함`}
+                        → ${!live.applied ? `차이 ${Math.abs(live.delta).toFixed(1)}kg — 여유분(${live.tol.toFixed(1)}kg) 안이라 발주 그대로` : live.delta > 0 ? `${live.delta.toFixed(1)}kg 더 남을 듯 → ${plan[0].md} 입고분에서 뺌` : `${(-live.delta).toFixed(1)}kg 더 쓸 듯 → ${plan[0].md} 입고분에 더함`}
                         ${live.frac < 1 ? `<br><span style="color:#aaa;">지금까지 ${live.soFar.toFixed(1)}kg (평소 하루 장사의 ${Math.round(live.frac * 100)}% 지난 시점) · 통계 탭을 열 때마다 다시 계산</span>` : ''}</div>` : ''}`;
             }
 
