@@ -3423,6 +3423,7 @@
         function sideDrinkCost(name) {
             if (!menuCosts) return 0;
             const s = menuCosts.sides, d = menuCosts.drinks;
+            if (/모찌|찹쌀떡/.test(name)) return s['모찌'] || 0;   // 요거트 모찌 찹쌀떡 전 종류 같은 원가 (찹쌀 치즈볼은 아님)
             if (/로제/.test(name)) return s['로제떡볶이'];
             if (/떡볶이/.test(name)) return s['떡볶이'];
             if (/케이준|감자/.test(name)) return (/리뷰|1\/2/.test(name)) ? s['케이준_리뷰'] : s['케이준'];
@@ -3491,7 +3492,7 @@
                     cost += sideDrinkCost(name) * qty; // 유료 추가 옵션(음료/사이드)
                     return;
                 }
-                if (/다음에|주세요|빼주|리뷰|껍질/.test(name)) return;
+                if (/다음에|주세요|빼주|리뷰/.test(name)) return;   // 닭껍질 후라이드는 사이드 원가(닭껍질)로 잡아야 해서 껍질은 거르지 않는다
                 if (SZ_LINE.test(name)) return;   // "한마리(2인)" 같은 사이즈 지정 줄 자체는 메뉴가 아님
 
                 const banban = /반\s*\/\s*반/.test(name);
