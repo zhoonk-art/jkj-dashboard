@@ -2542,14 +2542,14 @@
             const curDays = bizAfter(wd[wd.length - 1], today);
             const cur = await sumDays(curDays);
 
-            // 사용률(%) = 켜둔 시간 ÷ hours_full + 튀긴 마리 ÷ birds_full. 100% 넘으면 폐유.
+            // 사용률(%) = 켜둔 시간 ÷ hours_ref × 50% + 튀긴 마리(새우 환산 포함) ÷ birds_ref × 50%. 기준(24h·60마리)을 다 쓰면 100% → 폐유.
             // 켜둔 시간은 요일별 영업시간(평일 16~22시 6h, 주말 12~22시 10h)으로 잡는다.
-            const UM = Object.assign({ hours_full: 45, birds_full: 100, weekday_hours: 6, weekend_hours: 10 },
+            const UM = Object.assign({ hours_ref: 24, birds_ref: 60, weekday_hours: 6, weekend_hours: 10 },
                                      (_oilLedger && _oilLedger.usage_model) || {});
             const hoursOn = ds => { const g = new Date(ds + 'T00:00:00').getDay(); return (g === 0 || g === 6) ? UM.weekend_hours : UM.weekday_hours; };
             cycles.forEach(c => { c.hours = 0; for (let d = c.from; d <= c.to; d = plus(d, 1)) if (isBizDay(d)) c.hours += hoursOn(d); });
-            // 기준값(45h·100마리)은 고정 — 자동 보정은 사장님 요청(2026-09-23)으로 뺐다. 기록(시간·마리)만 쌓고 나중에 정한다.
-            const hPct = h => h / UM.hours_full * 100, bPct = b => b / UM.birds_full * 100;
+            // 기준값(24h·60마리)은 사장님 지정(2026-10-08) 고정값 — 자동 보정 없음. 기록(시간·마리)만 쌓고 나중에 정한다.
+            const hPct = h => h / UM.hours_ref * 50, bPct = b => b / UM.birds_ref * 50;   // 시간·마리 반반
             cycles.forEach(c => { c.pct = hPct(c.hours) + bPct(c.total); });
             const curHours = curDays.reduce((a, d) => a + hoursOn(d), 0);
             const curPct = hPct(curHours) + bPct(cur.total);
@@ -2625,7 +2625,7 @@
                         <td>${cycles.length ? F1(cycles.reduce((a, c) => a + c.total, 0) / cycles.length) : '-'}</td>
                         <td class="ord-kg">${P0(avgPct)}</td></tr>
                 </table>
-                <div class="ord-note">사용률 = 켜둔 시간 ÷ ${UM.hours_full}h + 튀긴 마리 ÷ ${UM.birds_full}마리 (평일 ${UM.weekday_hours}h · 주말 ${UM.weekend_hours}h 영업 기준) · 기록 ${cycles.length}회 쌓임 — 기준값은 기록이 더 쌓이면 다시 정함</div>
+                <div class="ord-note">사용률 = 시간 ${UM.hours_ref}h · 마리 ${UM.birds_ref}마리(새우 6p=0.5·12p=1·24p=2 환산)를 기준으로 반반 — 둘 다 채우면 100% (평일 ${UM.weekday_hours}h · 주말 ${UM.weekend_hours}h 영업 기준) · 기록 ${cycles.length}회 쌓임 — 기준값은 기록이 더 쌓이면 다시 정함</div>
                 ${IS_LOCAL ? `<button class="oil-btn" onclick="saveOilChange()">오늘 마감 후 폐유함</button>`
                             : `<div class="ord-note">폐유 기록은 매장 PC의 버튼으로 하거나 Claude에게 알려주세요 (휴대폰 화면은 읽기 전용)</div>`}`;
         }
