@@ -813,6 +813,7 @@
         .rpt-kpi-l { font-size: 12px; color: #9a8f85; }
         .rpt-kpi-v { font-size: 20px; font-weight: 800; color: #2b2522; margin: 2px 0; font-variant-numeric: tabular-nums; }
         .rpt-kpi-s { font-size: 11px; color: #9a8f85; line-height: 1.4; }
+        .rpt-kpi-v2 { font-size: 14px; font-weight: 700; color: #6b5d52; }
         .rpt-sec { font-size: 15px; font-weight: 800; color: #501100; margin: 18px 0 8px; padding-left: 8px; border-left: 4px solid #501100; }
         .rpt-unit { font-size: 11px; font-weight: 400; color: #9a8f85; }
         .rpt-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid #efe7e0; border-radius: 10px; background: #fff; }
@@ -4253,7 +4254,8 @@
         }
 
         // ===== 정보 탭: 손익 보고서 (월·분기·연, 직전 기간 대비) =====
-        // 기업 분기보고서의 손익계산서처럼 매출 → 영업비용(재료비·판매수수료·광고선전비·인건비·고정비) → 영업이익 순으로
+        // 기업 분기보고서의 손익계산서처럼 매출 → 영업비용(재료비·판매수수료·광고선전비·인건비·고정비) → 순이익 순으로
+        // ※ 사장님 용어(2026-10-10): 영업이익 = 매출 − 재료비 − 수수료 − 광고비(관리회계의 공헌이익), 순이익 = 거기서 인건비·고정비까지 뺀 것.
         // 대·중·소분류를 펼쳐 보여주고, 제품군(닭강정·새우강정·사이드·음료·디저트)별 손익과 채널별 매출을 따로 붙인다.
         // 계산은 다른 탭과 같은 함수(orderNet·orderCost·fixedAmountFor·laborMonthly·dailyAdMonth)를 쓰므로 숫자가 서로 맞는다.
         const PROD_ORDER = ['닭강정', '새우강정', '사이드', '음료', '디저트', '기타'];
@@ -4518,6 +4520,7 @@
                 return { rev: A.gross, mat, fee, ad, labor, fixed, cost, op: A.gross - cost, contrib: A.gross - mat - fee - ad };
             };
             const TC = tot(C), TP = tot(P);
+            const VC = vatOf(C), VP = vatOf(P);
             const pct = (v, base) => base ? (v / base * 100).toFixed(1) + '%' : '-';
             const chg = (c, p) => {
                 const d = c - p;
@@ -4540,11 +4543,17 @@
                 <div class="rpt-title">${infoLabel(infoKind, infoKey)} 손익 보고서${partialTag(C)}</div>
                 <div class="rpt-kpis">
                     ${kpi('매출액', TC.rev, TP.rev, man)}
-                    ${kpi('영업이익', TC.op, TP.op, man, '이익률 ' + opRate(TC).toFixed(1) + '%')}
-                    ${kpi('공헌이익', TC.contrib, TP.contrib, man, '매출의 ' + pct(TC.contrib, TC.rev))}
-                    ${kpi('주문 수', C.orders, P.orders, v => W(v) + '건')}
-                    ${kpi('객단가', C.orders ? TC.rev / C.orders : 0, P.orders ? TP.rev / P.orders : 0, won)}
+                    ${kpi('영업이익', TC.contrib, TP.contrib, man, '이익률 ' + pct(TC.contrib, TC.rev))}
+                    ${kpi('순이익', TC.op, TP.op, man, '이익률 ' + opRate(TC).toFixed(1) + '%')}
+                    ${(() => {   // 주문 수 + 객단가 한 카드로
+                        const aC = C.orders ? TC.rev / C.orders : 0, aP = P.orders ? TP.rev / P.orders : 0;
+                        const ch = (c, p) => p ? `<span class="${c >= p ? 'up' : 'down'}">${c >= p ? '▲' : '▼'} ${Math.abs((c - p) / p * 100).toFixed(1)}%</span>` : '-';
+                        return `<div class="rpt-kpi"><div class="rpt-kpi-l">주문 수 · 객단가</div>
+                            <div class="rpt-kpi-v">${W(C.orders)}건 <span class="rpt-kpi-v2">· ${won(aC)}</span></div>
+                            <div class="rpt-kpi-s">주문 ${ch(C.orders, P.orders)} · 객단가 ${ch(aC, aP)}</div></div>`;
+                    })()}
                     ${kpi('일평균 매출', C.days ? TC.rev / C.days : 0, P.days ? TP.rev / P.days : 0, man, `영업 ${C.days}일`)}
+                    ${kpi('예상 부가세', VC.pay, VP.pay, man, '세후 순이익 ' + man(TC.op - VC.pay))}
                 </div>`;
 
             // ── 2. 손익계산서 ──
@@ -4584,9 +4593,8 @@
             R(1, '5. 고정비', TC.fixed, TP.fixed, { cls: 'rpt-l1' });
             const FX = ['월세', '관리비', '가스비'];
             keysOf(C.fixed, P.fixed, '', FX).forEach(k => R(2, (k === '월세' ? '임대료 (월세)' : k) + (C.est[k] ? ' <span class="rpt-est">추정</span>' : ''), C.fixed[k] || 0, P.fixed[k] || 0));
-            R(0, 'Ⅲ. 영업이익', TC.op, TP.op, { cls: 'rpt-l0 rpt-op' });
-            R(0, '영업이익률', null, null, { rate: true, cls: 'rpt-rate' });
-            const VC = vatOf(C), VP = vatOf(P);
+            R(0, 'Ⅲ. 순이익', TC.op, TP.op, { cls: 'rpt-l0 rpt-op' });
+            R(0, '순이익률', null, null, { rate: true, cls: 'rpt-rate' });
             R(0, 'Ⅳ. 부가세 예상 납부액 <span class="rpt-est">추정</span>', VC.pay, VP.pay, { cls: 'rpt-l0' });
             R(1, '매출세액 (매출 × 10/110)', VC.out, VP.out, { cls: 'rpt-l2' });
             R(1, '(−) 매입세액', VC.inTot, VP.inTot, { cls: 'rpt-l2' });
@@ -4596,7 +4604,7 @@
             R(2, '월세·관리비·가스비', VC.inFixed, VP.inFixed, { cls: 'rpt-l3' });
             R(1, '(−) 의제매입세액공제 (생닭 × 9/109)', VC.deemed, VP.deemed, { cls: 'rpt-l2' });
             R(1, '(−) 신용카드매출세액공제 (매출 × 1.3%)', VC.card, VP.card, { cls: 'rpt-l2' });
-            R(0, 'Ⅴ. 부가세 차감 후 이익', TC.op - VC.pay, TP.op - VP.pay, { cls: 'rpt-l0 rpt-op' });
+            R(0, 'Ⅴ. 부가세 차감 후 순이익', TC.op - VC.pay, TP.op - VP.pay, { cls: 'rpt-l0 rpt-op' });
 
             html += `
                 <div class="rpt-sec">손익계산서 <span class="rpt-unit">(단위: 원)</span></div>
@@ -4629,7 +4637,7 @@
                 <div class="rpt-sec">제품군별 손익 <span class="rpt-unit">(단위: 원 · 세트는 단품 가격 비율로 나눔)</span></div>
                 <div class="rpt-wrap"><table class="rpt-table">
                     <thead><tr><th class="rpt-name">제품군</th><th>매출</th><th>구성비</th><th>재료비</th><th>수수료·광고</th>
-                        <th>공헌이익</th><th>공헌이익률</th><th>직전 공헌이익</th><th>증감률</th></tr></thead>
+                        <th>영업이익</th><th>영업이익률</th><th>직전 영업이익</th><th>증감률</th></tr></thead>
                     <tbody>${prods.map(p => {
                         const c = pc(p), q = pp(p), rv = C.rev[p] || 0;
                         const d = q ? ((c - q) / Math.abs(q) * 100) : null;
@@ -4645,12 +4653,12 @@
                         <tr class="rpt-l1"><td class="rpt-name">식용유 · 정액 광고(네이버 등)</td><td></td><td></td><td class="rpt-num">${W(sumMap(C.mat, '원가|'))}</td>
                             <td class="rpt-num">${W(unalloc(C) - sumMap(C.mat, '원가|'))}</td>
                             <td class="rpt-num">−${W(unalloc(C))}</td><td></td><td class="rpt-num">−${W(unalloc(P))}</td>${rateCell(-unalloc(C), -unalloc(P))}</tr>
-                        <tr class="rpt-l0"><td class="rpt-name">합계 (공헌이익)</td><td class="rpt-num">${W(TC.rev)}</td><td class="rpt-num rpt-pct">100%</td>
+                        <tr class="rpt-l0"><td class="rpt-name">합계 (영업이익)</td><td class="rpt-num">${W(TC.rev)}</td><td class="rpt-num rpt-pct">100%</td>
                             <td class="rpt-num">${W(TC.mat)}</td><td class="rpt-num">${W(TC.fee + TC.ad)}</td>
                             <td class="rpt-num"><b>${W(TC.contrib)}</b></td><td class="rpt-num">${pct(TC.contrib, TC.rev)}</td>
                             <td class="rpt-num">${W(TP.contrib)}</td>${rateCell(TC.contrib, TP.contrib)}</tr>
                     </tbody></table></div>
-                <div class="rpt-note">공헌이익 = 매출 − 재료비 − 판매수수료 − 광고비. 인건비·고정비를 빼기 전, 각 제품군이 가게 운영비를 얼마나 벌어오는지 보는 숫자입니다. 식용유와 정액 광고(네이버 등)는 제품군에 나누지 않고 합계에만 넣었습니다.</div>`;
+                <div class="rpt-note">영업이익 = 매출 − 재료비 − 판매수수료 − 광고비 (팔 때마다 따라 나가는 비용만 뺀 것). 여기서 인건비·고정비까지 빼면 순이익입니다. 각 제품군이 가게 운영비를 얼마나 벌어오는지 보는 숫자입니다. 식용유와 정액 광고(네이버 등)는 제품군에 나누지 않고 합계에만 넣었습니다.</div>`;
 
             // ── 4. 채널별 매출 ──
             const chs = keysOf(C.chan, P.chan, '', CH_ORDER);
@@ -4693,10 +4701,11 @@
                         ${trendRow('광고선전비', t => manN(t.ad))}
                         ${trendRow('인건비', t => manN(t.labor))}
                         ${trendRow('고정비', t => manN(t.fixed))}
-                        ${trendRow('영업이익', t => manN(t.op), 'rpt-op')}
-                        ${trendRow('영업이익률', t => (t.rev ? (t.op / t.rev * 100).toFixed(1) : '0.0') + '%')}
+                        ${trendRow('영업이익', t => manN(t.contrib))}
+                        ${trendRow('순이익', t => manN(t.op), 'rpt-op')}
+                        ${trendRow('순이익률', t => (t.rev ? (t.op / t.rev * 100).toFixed(1) : '0.0') + '%')}
                         ${trendRow('부가세 예상', (t, a) => manN(vatOf(a).pay))}
-                        ${trendRow('부가세 차감 후 이익', (t, a) => manN(t.op - vatOf(a).pay), 'rpt-op')}
+                        ${trendRow('부가세 차감 후 순이익', (t, a) => manN(t.op - vatOf(a).pay), 'rpt-op')}
                         ${trendRow('주문 수', (t, a) => W(a.orders) + '건')}
                         ${trendRow('영업일', (t, a) => a.days + '일')}
                     </tbody></table></div>
