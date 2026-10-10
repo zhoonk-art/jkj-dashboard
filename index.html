@@ -1863,17 +1863,6 @@
             toggle.classList.toggle('open');
         }
 
-        // 배달앱 주문은 POS 매출 기록에 몇 분 늦게 들어가는 게 보통이라(그 사이엔 앱 주문 정보로 보여줌) 바로 표시하면 매번 깜빡인다.
-        // 15분 넘게 POS에 안 들어간 경우만 '지연'으로 표시한다. 취소된 주문은 POS에 원래 안 들어가므로 표시하지 않는다.
-        function posStuck(order, dateStr) {
-            if (!order.pending_pos || order.cancelled) return false;
-            if (dateStr !== todayStr()) return true;
-            const m = /^(\d{1,2}):(\d{2})/.exec(order.time || '');
-            if (!m) return true;
-            const now = new Date();
-            return (now.getHours() * 60 + now.getMinutes()) - (+m[1] * 60 + +m[2]) >= 15;
-        }
-
         async function renderDay(dateStr) {
             const myToken = ++renderSeq;
             const data = await loadDayData(dateStr);
@@ -2146,7 +2135,6 @@
                                 ${order.cancelled ? '<span class="cancel-badge">❌ 취소</span>' : ''}
                                 ${order.prepaid ? '<span class="cancel-badge" style="background:#7048e8;">💰 선결제</span>' : ''}
                                 ${order.recognized ? '<span class="cancel-badge" style="background:#2b8a3e;">📦 선결제 납품</span>' : ''}
-                                ${posStuck(order, data.date) ? '<span class="cancel-badge" style="background:#f08c00;" title="배달앱 주문은 들어왔는데 15분 넘게 POS 매출에 안 올라간 주문 — 앱 주문 정보로 보여줍니다">POS 처리 지연</span>' : ''}
                                 <span class="order-time-channel">
                                     ${order.channel} • ${order.time}
                                 </span>
