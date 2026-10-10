@@ -832,6 +832,7 @@
         .rpt-table tr.rpt-l3 td { color: #8a7f76; font-size: 11.5px; }
         .rpt-table tr.rpt-op { background: #eaf4ec; }
         .rpt-table tr.rpt-op td { color: #1f6b33; }
+        .rpt-table tr.rpt-sub td { font-weight: 800; border-top: 1px dashed #b9d8c0; border-bottom: 1px dashed #b9d8c0; }
         .rpt-table tr.rpt-rate td { color: #1f6b33; font-weight: 700; background: #f4faf5; }
         .rpt-table .up { color: #d6336c; }
         .rpt-table .down { color: #1c7ed6; }
@@ -4588,6 +4589,7 @@
             });
             R(1, '3. 광고선전비', TC.ad, TP.ad, { cls: 'rpt-l1' });
             keysOf(C.ad, P.ad).forEach(k => R(2, k, C.ad[k] || 0, P.ad[k] || 0));
+            R(1, '= 영업이익 (매출 − 재료비·수수료·광고비)', TC.contrib, TP.contrib, { cls: 'rpt-op rpt-sub' });
             R(1, '4. 인건비', TC.labor, TP.labor, { cls: 'rpt-l1' });
             keysOf(C.labor, P.labor).forEach(k => R(2, k, C.labor[k] || 0, P.labor[k] || 0));
             R(1, '5. 고정비', TC.fixed, TP.fixed, { cls: 'rpt-l1' });
