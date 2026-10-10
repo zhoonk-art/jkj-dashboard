@@ -3453,8 +3453,13 @@
             return Math.round((perKg + powder) * (CHICKEN_KG[sz] || 0));
         }
 
-        function orderCost(order, costDate) {
-            if (typeof order.cost === 'number') return order.cost; // 선결제 가상주문 등 원가가 직접 지정된 경우
+        // 재료비 내역 쌓기 — parts['제품|재료'] += v
+        function addCostPart(parts, prod, mat, v) { const k = prod + '|' + mat; parts[k] = (parts[k] || 0) + (v || 0); }
+        // 사이드·음료·디저트 단품 원가가 어느 제품군/재료로 가는지
+        function costProdOf(name) { return /모찌|찹쌀떡/.test(name) ? '디저트' : /콜라|스프라이트|사이다|음료|제로/.test(name) ? '음료' : '사이드'; }
+        function costMatOf(name) { const p = costProdOf(name); return p === '사이드' ? '사이드 재료' : p; }
+        function orderCost(order, costDate, parts) {
+            if (typeof order.cost === 'number') { if (parts) addCostPart(parts, '기타', '직접 지정', order.cost); return order.cost; } // 선결제 가상주문 등 원가가 직접 지정된 경우
             if (!menuCosts) return 0;
             const mc = menuCosts;
             const menus = order.menus || order.items || [];
@@ -3479,6 +3484,8 @@
 
             let cost = 0;
             let chickenMenus = 0;
+            // parts 를 넘기면 '제품|재료' 별로도 쌓는다 (정보 탭 손익보고서용). 합계는 그대로.
+            const add = (prod, mat, v) => { v = v || 0; cost += v; if (parts) addCostPart(parts, prod, mat, v); };
 
             menus.forEach(menu => {
                 const name = menu.name;
@@ -3486,10 +3493,10 @@
 
                 if (menu.is_option) {
                     if (/떡사리/.test(name)) {
-                        cost += (mc.sides[bigSize ? '떡사리80g' : '떡사리40g'] || 0) * qty;
+                        add('사이드', '사이드 재료', (mc.sides[bigSize ? '떡사리80g' : '떡사리40g'] || 0) * qty);
                         return;
                     }
-                    cost += sideDrinkCost(name) * qty; // 유료 추가 옵션(음료/사이드)
+                    add(costProdOf(name), costMatOf(name), sideDrinkCost(name) * qty); // 유료 추가 옵션(음료/사이드)
                     return;
                 }
                 if (/다음에|주세요|빼주|리뷰/.test(name)) return;   // 닭껍질 후라이드는 사이드 원가(닭껍질)로 잡아야 해서 껍질은 거르지 않는다
@@ -3505,23 +3512,23 @@
                 if (hasChicken) {
                     chickenMenus += qty;
                     const sz = size || '반마리';
-                    cost += chickenBaseOn(sz, costDate) * qty; // 날짜별 닭 단가 (costDate 없으면 현재가)
-                    if (mc.oil_by_kg) cost += Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)) * qty; // 기름 (닭 kg 비례 모드일 때만)
+                    add('닭강정', '닭·파우더', chickenBaseOn(sz, costDate) * qty); // 날짜별 닭 단가 (costDate 없으면 현재가)
+                    if (mc.oil_by_kg) add('닭강정', '식용유', Math.round((mc.oil_per_kg || 0) * (CHICKEN_KG[sz] || 0)) * qty); // 기름 (닭 kg 비례 모드일 때만)
 
                     // 박스
-                    if (banban) cost += (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) * qty;
-                    else cost += (mc.box[sz] || 0) * qty;
+                    if (banban) add('닭강정', '포장재', (sz === '두마리' ? mc.box['두마리'] : mc.box['한마리 반/반']) * qty);
+                    else add('닭강정', '포장재', (mc.box[sz] || 0) * qty);
 
                     // 소스 (반마리=1국자, 한마리/반반=2, 두마리=4)
                     const halves = sz === '두마리' ? 4 : sz === '한마리' ? 2 : banban ? 2 : 1;
                     if (banban && flavorNames.length >= 2) {
-                        cost += (sauceCost(flavorNames[0]) + sauceCost(flavorNames[1])) * (halves / 2) * qty;
+                        add('닭강정', '소스', (sauceCost(flavorNames[0]) + sauceCost(flavorNames[1])) * (halves / 2) * qty);
                     } else {
                         const fsrc = flavorNames.length ? flavorNames[0] : name;
-                        cost += sauceCost(fsrc) * halves * qty;
+                        add('닭강정', '소스', sauceCost(fsrc) * halves * qty);
                     }
                 } else if (!hasShrimp) {
-                    cost += sideDrinkCost(name) * qty; // 단품 사이드/음료
+                    add(costProdOf(name), costMatOf(name), sideDrinkCost(name) * qty); // 단품 사이드/음료
                 }
 
                 // 새우 (단품 또는 세트) - 파우더는 완제품이라 없음
@@ -3533,23 +3540,23 @@
                     if (/24/.test(spSrc)) sp = '24p';
                     else if (/12/.test(spSrc)) sp = '12p';
                     else sp = '6p'; // 6p 또는 "소"
-                    cost += (mc.shrimp[sp] || 0) * qty;
+                    add('새우강정', '새우', (mc.shrimp[sp] || 0) * qty);
                     // 새우 박스 (6p=반마리박스, 12p/24p=한/두마리박스)
-                    cost += (sp === '6p' ? mc.box['반마리'] : sp === '12p' ? mc.box['한마리'] : mc.box['두마리']) * qty;
+                    add('새우강정', '포장재', (sp === '6p' ? mc.box['반마리'] : sp === '12p' ? mc.box['한마리'] : mc.box['두마리']) * qty);
                     // 새우 소스: 6p=1국자, 12p=2국자, 24p=4국자 (맛은 상품명 우선, 없으면 맛 옵션)
                     const sHalves = sp === '24p' ? 4 : sp === '12p' ? 2 : 1;
                     const sFlavorSrc = /매콤|달콤|후라이드/.test(name) ? name : (flavorNames.length ? flavorNames[0] : '');
-                    cost += sauceCost(sFlavorSrc) * sHalves * qty;
+                    add('새우강정', '소스', sauceCost(sFlavorSrc) * sHalves * qty);
                     if (!hasChicken) chickenMenus += qty; // 새우 단품도 무 서비스 대상
                 }
             });
 
             // 메뉴당 치킨무 서비스
-            if (!noMu) cost += (mc.per_menu['치킨무'] || 0) * chickenMenus;
+            if (!noMu) add('공통', '치킨무', (mc.per_menu['치킨무'] || 0) * chickenMenus);
             // 주문당 공통 (젓가락/비닐 + 기름)
             if (chickenMenus > 0) {
-                cost += (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0);
-                if (mc.oil_by_order) cost += (mc.oil_per_order || 0); // 기름: 주문 1건당 정액
+                add('공통', '포장재', (mc.per_order['젓가락'] || 0) + (mc.per_order['비닐'] || 0));
+                if (mc.oil_by_order) add('공통', '식용유', (mc.oil_per_order || 0)); // 기름: 주문 1건당 정액
             }
             return cost;
         }
