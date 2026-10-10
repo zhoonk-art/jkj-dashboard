@@ -798,6 +798,53 @@
 
         /* ---- 통계 뷰 ---- */
 
+        /* ---- 정보 탭: 손익 보고서 ---- */
+        .rpt-ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+        .rpt-seg { display: inline-flex; border: 1px solid #d9cfc6; border-radius: 8px; overflow: hidden; }
+        .rpt-seg button { border: 0; background: #fff; color: #6b5d52; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+        .rpt-seg button.on { background: #501100; color: #fff; font-weight: 700; }
+        .rpt-sel { padding: 7px 10px; border: 1px solid #d9cfc6; border-radius: 8px; font-size: 13px; background: #fff; color: #333; }
+        .rpt-vs { font-size: 12px; color: #9a8f85; }
+        .rpt-loading { padding: 30px 0; text-align: center; color: #9a8f85; font-size: 13px; }
+        .rpt-title { font-size: 18px; font-weight: 800; color: #501100; margin: 4px 0 12px; }
+        .rpt-badge { font-size: 11px; font-weight: 600; color: #b35c00; background: #fff4e0; border-radius: 10px; padding: 2px 8px; vertical-align: middle; }
+        .rpt-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+        .rpt-kpi { background: #fff; border: 1px solid #efe7e0; border-radius: 10px; padding: 10px 12px; min-width: 0; }
+        .rpt-kpi-l { font-size: 12px; color: #9a8f85; }
+        .rpt-kpi-v { font-size: 20px; font-weight: 800; color: #2b2522; margin: 2px 0; font-variant-numeric: tabular-nums; }
+        .rpt-kpi-s { font-size: 11px; color: #9a8f85; line-height: 1.4; }
+        .rpt-sec { font-size: 15px; font-weight: 800; color: #501100; margin: 18px 0 8px; padding-left: 8px; border-left: 4px solid #501100; }
+        .rpt-unit { font-size: 11px; font-weight: 400; color: #9a8f85; }
+        .rpt-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid #efe7e0; border-radius: 10px; background: #fff; }
+        .rpt-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+        .rpt-table th { background: #f7f2ee; color: #6b5d52; font-weight: 700; padding: 8px 10px; text-align: right; border-bottom: 1px solid #e6dcd4; position: sticky; top: 0; }
+        .rpt-table td { padding: 6px 10px; border-bottom: 1px solid #f3eee9; color: #333; }
+        .rpt-table .rpt-name { text-align: left; position: sticky; left: 0; background: inherit; z-index: 1; min-width: 150px; }
+        .rpt-table th.rpt-name { background: #f7f2ee; }
+        .rpt-table tbody tr { background: #fff; }
+        .rpt-num { text-align: right; font-variant-numeric: tabular-nums; }
+        .rpt-pct { color: #9a8f85; font-size: 11.5px; }
+        .rpt-table tr.rpt-l0 { background: #f3ebe4; }
+        .rpt-table tr.rpt-l0 td { font-weight: 800; color: #501100; border-top: 1px solid #e0d3c8; }
+        .rpt-table tr.rpt-l1 td { font-weight: 700; color: #3d2a1e; background: #fbf8f5; }
+        .rpt-table tr.rpt-l2 td { color: #444; }
+        .rpt-table tr.rpt-l3 td { color: #8a7f76; font-size: 11.5px; }
+        .rpt-table tr.rpt-op { background: #eaf4ec; }
+        .rpt-table tr.rpt-op td { color: #1f6b33; }
+        .rpt-table tr.rpt-rate td { color: #1f6b33; font-weight: 700; background: #f4faf5; }
+        .rpt-table .up { color: #d6336c; }
+        .rpt-table .down { color: #1c7ed6; }
+        .rpt-kpi-s .up { color: #d6336c; font-weight: 700; }
+        .rpt-kpi-s .down { color: #1c7ed6; font-weight: 700; }
+        .rpt-est { font-size: 10px; color: #b35c00; background: #fff4e0; border-radius: 6px; padding: 0 5px; margin-left: 3px; }
+        .rpt-note { font-size: 11.5px; color: #9a8f85; line-height: 1.5; margin: 6px 2px 0; }
+        @media (max-width: 600px) {
+            .rpt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .rpt-kpi-v { font-size: 17px; }
+            .rpt-table { font-size: 11.5px; }
+            .rpt-table .rpt-name { min-width: 118px; }
+            .rpt-table td, .rpt-table th { padding: 6px 7px; }
+        }
         /* ---- 순익 탭 ---- */
 
         .fee-table {
@@ -1101,6 +1148,7 @@
             <button class="view-tab" id="tab-history" onclick="showHistory()">기록</button>
             <button class="view-tab" id="tab-stats" onclick="showStats()">통계</button>
             <button class="view-tab" id="tab-profit" onclick="showProfit()">재무</button>
+            <button class="view-tab" id="tab-info" onclick="showInfo()">정보</button>
         </div>
 
         <!-- 오늘 vs 어제 비교 -->
@@ -1252,6 +1300,13 @@
                     <h3>🔥 월별 가스비</h3>
                     <div class="chart-wrap"><canvas id="gasFeeChart"></canvas></div>
                 </div>
+            </div>
+        </div>
+
+        <!-- 정보 뷰: 손익 보고서 (관리자) -->
+        <div id="infoView" class="hidden">
+            <div class="orders-section" style="margin-top: 12px;">
+                <div id="infoBox"></div>
             </div>
         </div>
 
@@ -1623,7 +1678,7 @@
         }
 
         function showView(viewId) {
-            ['dayView', 'historyView', 'statsView', 'profitView'].forEach(id => {
+            ['dayView', 'historyView', 'statsView', 'profitView', 'infoView'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.toggle('hidden', id !== viewId);
             });
@@ -3459,7 +3514,7 @@
         function costProdOf(name) { return /모찌|찹쌀떡/.test(name) ? '디저트' : /콜라|스프라이트|사이다|음료|제로/.test(name) ? '음료' : '사이드'; }
         function costMatOf(name) { const p = costProdOf(name); return p === '사이드' ? '사이드 재료' : p; }
         function orderCost(order, costDate, parts) {
-            if (typeof order.cost === 'number') { if (parts) addCostPart(parts, '기타', '직접 지정', order.cost); return order.cost; } // 선결제 가상주문 등 원가가 직접 지정된 경우
+            if (typeof order.cost === 'number') { if (parts) addCostPart(parts, '닭강정', '단체·수기 주문', order.cost); return order.cost; } // 선결제 가상주문 등 원가가 직접 지정된 경우
             if (!menuCosts) return 0;
             const mc = menuCosts;
             const menus = order.menus || order.items || [];
@@ -3489,14 +3544,15 @@
 
             menus.forEach(menu => {
                 const name = menu.name;
-                const qty = menu.qty || 1;
+                // 2025-12~2026-02 옛 POS 데이터는 옵션 수량 칸에 가격이 들어가 있다(└ 기본(12p) x24900 등) — 옵션이 10개를 넘는 일은 없으므로 1로 본다
+                const qty = (menu.is_option && (menu.qty || 1) > 9) ? 1 : (menu.qty || 1);
 
                 if (menu.is_option) {
                     if (/떡사리/.test(name)) {
                         add('사이드', '사이드 재료', (mc.sides[bigSize ? '떡사리80g' : '떡사리40g'] || 0) * qty);
                         return;
                     }
-                    add(costProdOf(name), costMatOf(name), sideDrinkCost(name) * qty); // 유료 추가 옵션(음료/사이드)
+                    add((+menu.price || 0) > 0 ? costProdOf(name) : '서비스', costMatOf(name), sideDrinkCost(name) * qty); // 추가 옵션(음료/사이드) — 0원이면 리뷰이벤트·세트 구성 등 무료 서비스
                     return;
                 }
                 if (/다음에|주세요|빼주|리뷰/.test(name)) return;   // 닭껍질 후라이드는 사이드 원가(닭껍질)로 잡아야 해서 껍질은 거르지 않는다
@@ -4178,6 +4234,15 @@
             renderStats();
         }
 
+        function showInfo() {
+            if (!guardTab('tab-info')) return;
+            currentMode = 'info';
+            setActiveTab('tab-info');
+            showView('infoView');
+            document.getElementById('comparisonStrip').classList.add('hidden');
+            renderInfo();
+        }
+
         function showProfit() {
             if (!guardTab('tab-profit')) return;
             currentMode = 'profit';
@@ -4185,6 +4250,415 @@
             showView('profitView');
             document.getElementById('comparisonStrip').classList.add('hidden');
             renderProfit();
+        }
+
+        // ===== 정보 탭: 손익 보고서 (월·분기·연, 직전 기간 대비) =====
+        // 기업 분기보고서의 손익계산서처럼 매출 → 영업비용(재료비·판매수수료·광고선전비·인건비·고정비) → 영업이익 순으로
+        // 대·중·소분류를 펼쳐 보여주고, 제품군(닭강정·새우강정·사이드·음료·디저트)별 손익과 채널별 매출을 따로 붙인다.
+        // 계산은 다른 탭과 같은 함수(orderNet·orderCost·fixedAmountFor·laborMonthly·dailyAdMonth)를 쓰므로 숫자가 서로 맞는다.
+        const PROD_ORDER = ['닭강정', '새우강정', '사이드', '음료', '디저트', '기타'];
+        const MAT_ORDER = ['닭·파우더', '새우', '소스', '사이드 재료', '음료', '디저트', '치킨무', '포장재', '식용유', '단체·수기 주문'];
+        const CH_ORDER = ['배달의민족', '쿠팡이츠', '네이버주문', '포장(매장)', '기타'];
+        let infoKind = 'm', infoKey = null;
+        const _infoMonthCache = {};
+
+        // 메뉴 이름 → 매출 제품군
+        function revProdOf(name) {
+            if (/단체/.test(name)) return '닭강정';                 // 선결제 단체 납품(만원 단체메뉴 등) — 닭강정 위주, 음료는 끼워 넣은 것
+            if (/^\s*(6|12|24)\s*p\b/i.test(name)) return '새우강정';  // 새우 크기 옵션(「└ 12p」)
+            if (/모찌|찹쌀떡/.test(name)) return '디저트';
+            if (/콜라|스프라이트|사이다|음료|제로/.test(name)) return '음료';
+            if (/새우/.test(name)) return '새우강정';
+            if (/껍질|소스|시즈닝/.test(name)) return '사이드';
+            if (/닭강정|후라이드|양념|간장|반\s*\/\s*반|(반|한|두)마리/.test(name)) return '닭강정';
+            return '사이드';
+        }
+        // 주문 1건의 매출을 제품군별로 나눈다. 세트는 단품 가격 비율로 쪼갠다
+        //   닭+새우 세트: 닭 반마리 13,900 : 새우 6p 15,900 (12p 세트는 23,900 : 25,900)
+        //   ○○+떡볶이 세트: 본메뉴 단품가 : 떡볶이 7,900
+        // 메뉴 금액 합이 주문 금액과 다르면(옵션 가격 표기 차이 등) 비율대로 맞춰 합계가 주문 금액과 같게 한다.
+        function orderRevenueParts(o) {
+            const out = {};
+            const put = (k, v) => { out[k] = (out[k] || 0) + v; };
+            let sum = 0;
+            (o.items || o.menus || []).forEach(it => {
+                const price = +it.price || 0;
+                if (!price) return;
+                sum += price;
+                const name = String(it.name || '').replace(/^└\s*/, '');
+                if (it.is_option) { put(/떡사리/.test(name) ? '사이드' : revProdOf(name), price); return; }
+                const shrimp = /새우/.test(name), chicken = /닭/.test(name) && !/껍질/.test(name), tteok = /떡볶이/.test(name);
+                if (shrimp && chicken) {
+                    const sh = /12\s*p|중/i.test(name) ? 25900 / (23900 + 25900) : 15900 / (13900 + 15900);
+                    put('새우강정', price * sh); put('닭강정', price * (1 - sh)); return;
+                }
+                if (tteok && (shrimp || /닭강정/.test(name))) {
+                    const main = shrimp ? 15900 : 13900, sh = main / (main + 7900);
+                    put(shrimp ? '새우강정' : '닭강정', price * sh); put('사이드', price * (1 - sh)); return;
+                }
+                put(revProdOf(name), price);
+            });
+            const amt = +o.amount || 0;
+            if (!(sum > 0)) return { '기타': amt };
+            const k = amt / sum;
+            Object.keys(out).forEach(p => { out[p] *= k; });
+            return out;
+        }
+        function chanGroup(ch) {
+            const c = String(ch || '');
+            if (c.indexOf('배달의민족') === 0) return '배달의민족';
+            if (c.indexOf('쿠팡') === 0) return '쿠팡이츠';
+            if (c.indexOf('네이버') === 0) return '네이버주문';
+            if (c.indexOf('포장(매장)') === 0) return '포장(매장)';
+            return '기타';
+        }
+        const addTo = (m, k, v) => { m[k] = (m[k] || 0) + (v || 0); };
+        function emptyAgg() {
+            return { days: 0, orders: 0, gross: 0, rev: {}, mat: {}, fee: {}, ad: {}, labor: {}, fixed: {}, est: {},
+                     chan: {}, chanCnt: {}, prodFee: {}, partial: false, bizEl: 0, bizTot: 0 };
+        }
+        function mergeAgg(a, b) {
+            ['days', 'orders', 'gross', 'bizEl', 'bizTot'].forEach(k => { a[k] += b[k] || 0; });
+            ['rev', 'mat', 'fee', 'ad', 'labor', 'fixed', 'chan', 'chanCnt', 'prodFee'].forEach(k => {
+                Object.keys(b[k] || {}).forEach(x => addTo(a[k], x, b[k][x]));
+            });
+            Object.keys(b.est || {}).forEach(x => { a.est[x] = true; });
+            a.partial = a.partial || b.partial;
+            return a;
+        }
+
+        // 한 달치 집계. 지난 달은 캐시 (설정 캐시를 비울 때 같이 비운다)
+        // cutDay 를 주면 그 달 1일~cutDay 일까지만 센다 (진행 중인 기간을 직전 기간의 '같은 날수'와 비교할 때)
+        async function infoMonthAgg(ym, cutDay) {
+            const curYm = todayStr().substring(0, 7);
+            const ck = ym + (cutDay ? '@' + cutDay : '');
+            if (ym !== curYm && _infoMonthCache[ck]) return _infoMonthCache[ck];
+            const A = emptyAgg();
+            if (ym > curYm) return A;
+            const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
+            const lastD = new Date(+ym.substring(0, 4), +ym.substring(5, 7), 0).getDate();
+            const cutIso = cutDay ? ym + '-' + String(Math.min(cutDay, lastD)).padStart(2, '0') : null;
+            const dates = idx.map(d => d.date).filter(d => d.substring(0, 7) === ym && (!cutIso || d <= cutIso));
+            const today = todayStr();
+            if (ym === curYm && dates.indexOf(today) < 0) dates.push(today);
+            const dayData = await Promise.all(dates.map(d => loadDayData(d)));
+            dates.forEach((ds, i) => {
+                const dd = dayData[i];
+                if (!dd || dd.date !== ds) return;
+                const act = (dd.orders || []).filter(o => o && !o.cancelled && !o.prepaid);
+                if (!act.length) return;
+                A.days++;
+                act.forEach(o => {
+                    A.orders++; A.gross += o.amount;
+                    const rp = orderRevenueParts(o);
+                    const rpSum = Object.keys(rp).reduce((s, k) => s + rp[k], 0) || 1;
+                    Object.keys(rp).forEach(k => addTo(A.rev, k, rp[k]));
+                    const parts = {};
+                    orderCost(o, ds, parts);
+                    Object.keys(parts).forEach(k => addTo(A.mat, k, parts[k]));
+                    const r = orderNet(o, ds), pf = platformOf(o.channel);
+                    addTo(A.fee, pf + '|중개이용료', r.med); addTo(A.fee, pf + '|결제수수료', r.pay);
+                    addTo(A.fee, pf + '|배달비', r.del); addTo(A.fee, pf + '|부가세', r.vat);
+                    const adv = r.ad - r.sale;
+                    if (adv) addTo(A.ad, pf === '배민' ? '배민 우리가게클릭' : pf === '쿠팡' ? '쿠팡 매출연동 광고' : '기타 매출연동 광고', adv);
+                    if (r.sale) addTo(A.ad, '배민 타임세일 (가게 부담 할인)', r.sale);
+                    // 제품군별 손익용: 이 주문의 수수료+광고를 매출 비율대로 나눈다
+                    Object.keys(rp).forEach(k => addTo(A.prodFee, k, r.fee * rp[k] / rpSum));
+                    const cg = chanGroup(o.channel);
+                    addTo(A.chan, cg, o.amount); addTo(A.chanCnt, cg, 1);
+                });
+            });
+            if (A.days) {
+                // 월 고정비·인건비·정액 광고 — 진행 중인 달은 지난 영업일 비율만큼만 (월 결산표와 같은 방식)
+                const isCur = ym === curYm, upto = isCur ? today : cutIso;
+                A.bizTot = bizDaysInMonth(ym) || 1;
+                A.bizEl = upto ? bizDaysElapsed(ym, upto) : A.bizTot;
+                A.partial = !!upto;
+                const pro = A.bizEl / A.bizTot;
+                (costsConfig.fixed || []).forEach(f => {
+                    const a = fixedAmountFor(f, ym);
+                    if (!a.amt || /광고/.test(f.name)) return;
+                    const v = a.amt * pro;
+                    if (/식용유|기름/.test(f.name)) { addTo(A.mat, '원가|식용유', v); if (a.est) A.est['식용유'] = true; }
+                    else { addTo(A.fixed, f.name, v); if (a.est) A.est[f.name] = true; }
+                });
+                (costsConfig.labor || []).forEach(l => {
+                    const v = laborMonthly(l, ym, upto);
+                    if (v) addTo(A.labor, l.short || l.name, v);
+                });
+                const ext = dailyAdMonth(ym, upto);
+                Object.keys(ext).forEach(k => addTo(A.ad, k, ext[k]));
+            }
+            if (ym !== curYm) _infoMonthCache[ck] = A;
+            return A;
+        }
+
+        // 기간 키: 월 'YYYY-MM' · 분기 'YYYY-Qn' · 연 'YYYY'
+        function infoMonthsOf(kind, key) {
+            if (kind === 'm') return [key];
+            const y = +key.substring(0, 4);
+            const pad = m => y + '-' + String(m).padStart(2, '0');
+            if (kind === 'q') { const q = +key.slice(-1); return [1, 2, 3].map(i => pad((q - 1) * 3 + i)); }
+            return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(pad);
+        }
+        function infoPrevKey(kind, key) {
+            if (kind === 'm') { const d = new Date(+key.substring(0, 4), +key.substring(5, 7) - 2, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+            if (kind === 'q') { let y = +key.substring(0, 4), q = +key.slice(-1) - 1; if (q < 1) { q = 4; y--; } return y + '-Q' + q; }
+            return String(+key - 1);
+        }
+        function infoLabel(kind, key) {
+            if (kind === 'm') return (+key.substring(0, 4)) + '년 ' + (+key.substring(5, 7)) + '월';
+            if (kind === 'q') return key.substring(0, 4) + '년 ' + key.slice(-1) + '분기';
+            return key + '년';
+        }
+        function infoKeyOfYm(kind, ym) {
+            if (kind === 'm') return ym;
+            if (kind === 'q') return ym.substring(0, 4) + '-Q' + (Math.floor((+ym.substring(5, 7) - 1) / 3) + 1);
+            return ym.substring(0, 4);
+        }
+        // cut = { mi: 기간 안에서 몇 번째 달(0부터), day } — 그 달은 day 일까지, 그 뒤 달은 빼고 센다
+        async function infoAgg(kind, key, cut) {
+            const months = infoMonthsOf(kind, key);
+            const aggs = await Promise.all(months.map((ym, i) =>
+                !cut ? infoMonthAgg(ym) : i < cut.mi ? infoMonthAgg(ym) : i === cut.mi ? infoMonthAgg(ym, cut.day) : Promise.resolve(emptyAgg())));
+            return aggs.reduce((a, b) => mergeAgg(a, b), emptyAgg());
+        }
+        // 지금 진행 중인 기간이면 그 안에서 오늘의 위치
+        function infoCutOf(kind, key) {
+            const t = todayStr(), ym = t.substring(0, 7);
+            const i = infoMonthsOf(kind, key).indexOf(ym);
+            return i < 0 ? null : { mi: i, day: +t.substring(8, 10) };
+        }
+
+        function setInfoKind(k) {
+            infoKind = k;
+            infoKey = infoKeyOfYm(k, todayStr().substring(0, 7));
+            renderInfo();
+        }
+        function setInfoKey(k) { infoKey = k; renderInfo(); }
+
+        let _infoToken = 0;
+        async function renderInfo() {
+            const box = document.getElementById('infoBox');
+            if (!box) return;
+            if (DASH_ROLE === 'staff') { box.innerHTML = ''; return; }
+            const token = ++_infoToken;
+            await Promise.all([loadFees(), loadMenuCosts(), loadCosts(), loadBmAdLog()]);
+            const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
+            const curYm = todayStr().substring(0, 7);
+            const firstYm = idx.length ? idx.map(d => d.date).sort()[0].substring(0, 7) : curYm;
+            if (!infoKey) infoKey = infoKeyOfYm(infoKind, curYm);
+            // 고를 수 있는 기간 목록 (최근 것이 위)
+            const keys = [];
+            for (let d = new Date(+curYm.substring(0, 4), +curYm.substring(5, 7) - 1, 1); ; d.setMonth(d.getMonth() - 1)) {
+                const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                if (ym < firstYm) break;
+                const k = infoKeyOfYm(infoKind, ym);
+                if (keys.indexOf(k) < 0) keys.push(k);
+            }
+            const prevKey = infoPrevKey(infoKind, infoKey);
+            const kindName = { m: '월', q: '분기', y: '연' }[infoKind];
+            // 진행 중인 기간은 직전 기간의 같은 날수까지만 잘라서 비교 (10/1~10/10 이면 9/1~9/10)
+            const cut = infoCutOf(infoKind, infoKey);
+            const pMonths = infoMonthsOf(infoKind, prevKey);
+            const cutLabel = cut ? (() => { const pm = pMonths[cut.mi]; const last = new Date(+pm.substring(0, 4), +pm.substring(5, 7), 0).getDate();
+                return ` ${+pMonths[0].substring(5, 7)}/1~${+pm.substring(5, 7)}/${Math.min(cut.day, last)}`; })() : '';
+            const ctrl = `
+                <div class="rpt-ctrl">
+                    <div class="rpt-seg">${[['m', '월간'], ['q', '분기'], ['y', '연간']].map(([k, l]) =>
+                        `<button class="${infoKind === k ? 'on' : ''}" onclick="setInfoKind('${k}')">${l}</button>`).join('')}</div>
+                    <select class="rpt-sel" onchange="setInfoKey(this.value)">${keys.map(k =>
+                        `<option value="${k}" ${k === infoKey ? 'selected' : ''}>${infoLabel(infoKind, k)}</option>`).join('')}</select>
+                    <span class="rpt-vs">비교: 직전 ${kindName} ${cut ? "같은 기간" : ""} (${infoLabel(infoKind, prevKey)}${cutLabel})</span>
+                </div>`;
+            box.innerHTML = ctrl + `<div class="rpt-loading">${infoLabel(infoKind, infoKey)} 집계 중…</div>`;
+
+            const [C, P] = await Promise.all([infoAgg(infoKind, infoKey), infoAgg(infoKind, prevKey, cut)]);
+            const prevName = infoLabel(infoKind, prevKey) + (cut ? "<br><span class=\"rpt-unit\">" + cutLabel.trim() + "</span>" : "");
+            if (token !== _infoToken) return;
+            if (!C.days) { box.innerHTML = ctrl + '<div class="empty-note">이 기간에는 영업 기록이 없습니다</div>'; return; }
+
+            // ── 금액·비율 도우미 ──
+            const W = v => Math.round(v || 0).toLocaleString();
+            const sumMap = (m, pre) => Object.keys(m).filter(k => !pre || k.indexOf(pre) === 0).reduce((s, k) => s + m[k], 0);
+            const tot = A => {
+                const mat = sumMap(A.mat), fee = sumMap(A.fee), ad = sumMap(A.ad), labor = sumMap(A.labor), fixed = sumMap(A.fixed);
+                const cost = mat + fee + ad + labor + fixed;
+                return { rev: A.gross, mat, fee, ad, labor, fixed, cost, op: A.gross - cost, contrib: A.gross - mat - fee - ad };
+            };
+            const TC = tot(C), TP = tot(P);
+            const pct = (v, base) => base ? (v / base * 100).toFixed(1) + '%' : '-';
+            const chg = (c, p) => {
+                const d = c - p;
+                const cls = d > 0 ? 'up' : d < 0 ? 'down' : '';
+                const rate = p ? ((d / Math.abs(p)) * 100).toFixed(1) + '%' : (c ? '신규' : '-');
+                return `<td class="rpt-num ${cls}">${d > 0 ? '▲' : d < 0 ? '▼' : ''} ${W(Math.abs(d))}</td><td class="rpt-num ${cls}">${d ? rate : '-'}</td>`;
+            };
+            const partialTag = A => A.partial ? ` <span class="rpt-badge">진행 중 · 영업일 ${A.bizEl}일 지남 (전체 ${A.bizTot}일)</span>` : '';
+
+            // ── 1. 요약 ──
+            const kpi = (label, c, p, fmt, sub) => {
+                const d = p ? (c - p) / Math.abs(p) * 100 : null;
+                if (p < 0 && c >= 0 || p > 0 && c < 0) return `<div class="rpt-kpi"><div class="rpt-kpi-l">${label}</div><div class="rpt-kpi-v">${fmt(c)}</div><div class="rpt-kpi-s"><span class="${c >= 0 ? 'up' : 'down'}">${c >= 0 ? '흑자 전환' : '적자 전환'}</span> 직전 ${fmt(p)}${sub ? ' · ' + sub : ''}</div></div>`;
+                return `<div class="rpt-kpi"><div class="rpt-kpi-l">${label}</div><div class="rpt-kpi-v">${fmt(c)}</div>
+                    <div class="rpt-kpi-s">${d == null ? '직전 기록 없음' : `<span class="${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)}%</span> 직전 ${fmt(p)}`}${sub ? ' · ' + sub : ''}</div></div>`;
+            };
+            const won = v => W(v) + '원', man = v => (Math.round(v / 1000) / 10).toLocaleString() + '만';
+            const opRate = T => T.rev ? T.op / T.rev * 100 : 0;
+            let html = ctrl + `
+                <div class="rpt-title">${infoLabel(infoKind, infoKey)} 손익 보고서${partialTag(C)}</div>
+                <div class="rpt-kpis">
+                    ${kpi('매출액', TC.rev, TP.rev, man)}
+                    ${kpi('영업이익', TC.op, TP.op, man, '이익률 ' + opRate(TC).toFixed(1) + '%')}
+                    ${kpi('공헌이익', TC.contrib, TP.contrib, man, '매출의 ' + pct(TC.contrib, TC.rev))}
+                    ${kpi('주문 수', C.orders, P.orders, v => W(v) + '건')}
+                    ${kpi('객단가', C.orders ? TC.rev / C.orders : 0, P.orders ? TP.rev / P.orders : 0, won)}
+                    ${kpi('일평균 매출', C.days ? TC.rev / C.days : 0, P.days ? TP.rev / P.days : 0, man, `영업 ${C.days}일`)}
+                </div>`;
+
+            // ── 2. 손익계산서 ──
+            const rows = [];
+            const R = (lv, label, c, p, opt) => rows.push(Object.assign({ lv, label, c, p }, opt || {}));
+            const keysOf = (mapC, mapP, pre, order) => {
+                const set = {};
+                [mapC, mapP].forEach(m => Object.keys(m).forEach(k => { if (!pre || k.indexOf(pre) === 0) set[k] = 1; }));
+                const ks = Object.keys(set);
+                return order ? ks.sort((a, b) => {
+                    const ia = order.indexOf(pre ? a.substring(pre.length) : a), ib = order.indexOf(pre ? b.substring(pre.length) : b);
+                    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+                }) : ks.sort((a, b) => (mapC[b] || 0) - (mapC[a] || 0));
+            };
+            R(0, 'Ⅰ. 매출액', TC.rev, TP.rev, { cls: 'rpt-l0' });
+            keysOf(C.rev, P.rev, '', PROD_ORDER).forEach(k => R(1, k, C.rev[k] || 0, P.rev[k] || 0));
+            R(0, 'Ⅱ. 영업비용', TC.cost, TP.cost, { cls: 'rpt-l0' });
+            // 재료비: 재료별 합 → 그 아래 제품군별
+            R(1, '1. 재료비', TC.mat, TP.mat, { cls: 'rpt-l1' });
+            const byMat = A => { const m = {}; Object.keys(A.mat).forEach(k => addTo(m, k.split('|')[1], A.mat[k])); return m; };
+            const MC = byMat(C), MP = byMat(P);
+            keysOf(MC, MP, '', MAT_ORDER).forEach(k => R(2, k + (C.est[k] ? ' <span class="rpt-est">추정</span>' : ''), MC[k] || 0, MP[k] || 0));
+            R(1, '2. 판매수수료', TC.fee, TP.fee, { cls: 'rpt-l1' });
+            ['배민', '쿠팡', '기타'].forEach(pf => {
+                const c = sumMap(C.fee, pf + '|'), p = sumMap(P.fee, pf + '|');
+                if (!c && !p) return;
+                R(2, pf === '기타' ? '기타 (네이버·포장 등)' : pf, c, p);
+                ['중개이용료', '결제수수료', '배달비', '부가세'].forEach(t => {
+                    const cc = C.fee[pf + '|' + t] || 0, pp = P.fee[pf + '|' + t] || 0;
+                    if (cc || pp) R(3, t, cc, pp);
+                });
+            });
+            R(1, '3. 광고선전비', TC.ad, TP.ad, { cls: 'rpt-l1' });
+            keysOf(C.ad, P.ad).forEach(k => R(2, k, C.ad[k] || 0, P.ad[k] || 0));
+            R(1, '4. 인건비', TC.labor, TP.labor, { cls: 'rpt-l1' });
+            keysOf(C.labor, P.labor).forEach(k => R(2, k, C.labor[k] || 0, P.labor[k] || 0));
+            R(1, '5. 고정비', TC.fixed, TP.fixed, { cls: 'rpt-l1' });
+            const FX = ['월세', '관리비', '가스비'];
+            keysOf(C.fixed, P.fixed, '', FX).forEach(k => R(2, (k === '월세' ? '임대료 (월세)' : k) + (C.est[k] ? ' <span class="rpt-est">추정</span>' : ''), C.fixed[k] || 0, P.fixed[k] || 0));
+            R(0, 'Ⅲ. 영업이익', TC.op, TP.op, { cls: 'rpt-l0 rpt-op' });
+            R(0, '영업이익률', null, null, { rate: true, cls: 'rpt-rate' });
+
+            html += `
+                <div class="rpt-sec">손익계산서 <span class="rpt-unit">(단위: 원)</span></div>
+                <div class="rpt-wrap"><table class="rpt-table">
+                    <thead><tr><th class="rpt-name">과목</th>
+                        <th>${infoLabel(infoKind, infoKey)}</th><th>매출 대비</th>
+                        <th>${prevName}</th><th>매출 대비</th>
+                        <th>증감액</th><th>증감률</th></tr></thead>
+                    <tbody>${rows.map(r => r.rate
+                        ? `<tr class="${r.cls}"><td class="rpt-name">${r.label}</td><td class="rpt-num">${opRate(TC).toFixed(1)}%</td><td></td>
+                              <td class="rpt-num">${TP.rev ? opRate(TP).toFixed(1) + '%' : '-'}</td><td></td>
+                              <td class="rpt-num ${opRate(TC) >= opRate(TP) ? 'up' : 'down'}" colspan="2">${TP.rev ? (opRate(TC) - opRate(TP) >= 0 ? '▲ ' : '▼ ') + Math.abs(opRate(TC) - opRate(TP)).toFixed(1) + '%p' : '-'}</td></tr>`
+                        : `<tr class="${r.cls || 'rpt-l' + r.lv}"><td class="rpt-name" style="padding-left:${8 + r.lv * 14}px">${r.label}</td>
+                              <td class="rpt-num">${W(r.c)}</td><td class="rpt-num rpt-pct">${pct(r.c, TC.rev)}</td>
+                              <td class="rpt-num">${W(r.p)}</td><td class="rpt-num rpt-pct">${pct(r.p, TP.rev)}</td>
+                              ${chg(r.c, r.p)}</tr>`).join('')}</tbody>
+                </table></div>`;
+
+            // ── 3. 제품군별 손익 ──
+            const prodMat = (A, p) => Object.keys(A.mat).filter(k => k.indexOf(p + '|') === 0).reduce((s, k) => s + A.mat[k], 0);
+            const prods = PROD_ORDER.filter(p => (C.rev[p] || 0) || (P.rev[p] || 0));
+            const pc = p => (C.rev[p] || 0) - prodMat(C, p) - (C.prodFee[p] || 0);
+            const pp = p => (P.rev[p] || 0) - prodMat(P, p) - (P.prodFee[p] || 0);
+            const comMat = A => sumMap(A.mat, '공통|');
+            // 제품군에 안 나눈 비용: 식용유(월 정액) + 정액 광고(네이버 등)
+            const unalloc = A => sumMap(A.mat, '원가|') + (sumMap(A.ad) - (PROD_ORDER.reduce((s, p) => s + (A.prodFee[p] || 0), 0) - sumMap(A.fee)));
+            const rateCell = (c, q) => { const d = q ? (c - q) / Math.abs(q) * 100 : null;
+                return `<td class="rpt-num ${d == null ? '' : d >= 0 ? 'up' : 'down'}">${d == null ? '-' : (d >= 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + '%'}</td>`; };
+            html += `
+                <div class="rpt-sec">제품군별 손익 <span class="rpt-unit">(단위: 원 · 세트는 단품 가격 비율로 나눔)</span></div>
+                <div class="rpt-wrap"><table class="rpt-table">
+                    <thead><tr><th class="rpt-name">제품군</th><th>매출</th><th>구성비</th><th>재료비</th><th>수수료·광고</th>
+                        <th>공헌이익</th><th>공헌이익률</th><th>직전 공헌이익</th><th>증감률</th></tr></thead>
+                    <tbody>${prods.map(p => {
+                        const c = pc(p), q = pp(p), rv = C.rev[p] || 0;
+                        const d = q ? ((c - q) / Math.abs(q) * 100) : null;
+                        return `<tr><td class="rpt-name">${p}</td><td class="rpt-num">${W(rv)}</td><td class="rpt-num rpt-pct">${pct(rv, TC.rev)}</td>
+                            <td class="rpt-num">${W(prodMat(C, p))}</td><td class="rpt-num">${W(C.prodFee[p])}</td>
+                            <td class="rpt-num"><b>${W(c)}</b></td><td class="rpt-num">${pct(c, rv)}</td>
+                            <td class="rpt-num">${W(q)}</td><td class="rpt-num ${d == null ? '' : d >= 0 ? 'up' : 'down'}">${d == null ? '-' : (d >= 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + '%'}</td></tr>`;
+                    }).join('')}
+                        <tr class="rpt-l1"><td class="rpt-name">무료 서비스 (리뷰이벤트·세트 음료 등)</td><td></td><td></td><td class="rpt-num">${W(sumMap(C.mat, '서비스|'))}</td><td></td>
+                            <td class="rpt-num">−${W(sumMap(C.mat, '서비스|'))}</td><td></td><td class="rpt-num">−${W(sumMap(P.mat, '서비스|'))}</td>${rateCell(-sumMap(C.mat, '서비스|'), -sumMap(P.mat, '서비스|'))}</tr>
+                        <tr class="rpt-l1"><td class="rpt-name">공통 재료 (치킨무·젓가락·비닐)</td><td></td><td></td><td class="rpt-num">${W(comMat(C))}</td><td></td>
+                            <td class="rpt-num">−${W(comMat(C))}</td><td></td><td class="rpt-num">−${W(comMat(P))}</td>${rateCell(-comMat(C), -comMat(P))}</tr>
+                        <tr class="rpt-l1"><td class="rpt-name">식용유 · 정액 광고(네이버 등)</td><td></td><td></td><td class="rpt-num">${W(sumMap(C.mat, '원가|'))}</td>
+                            <td class="rpt-num">${W(unalloc(C) - sumMap(C.mat, '원가|'))}</td>
+                            <td class="rpt-num">−${W(unalloc(C))}</td><td></td><td class="rpt-num">−${W(unalloc(P))}</td>${rateCell(-unalloc(C), -unalloc(P))}</tr>
+                        <tr class="rpt-l0"><td class="rpt-name">합계 (공헌이익)</td><td class="rpt-num">${W(TC.rev)}</td><td class="rpt-num rpt-pct">100%</td>
+                            <td class="rpt-num">${W(TC.mat)}</td><td class="rpt-num">${W(TC.fee + TC.ad)}</td>
+                            <td class="rpt-num"><b>${W(TC.contrib)}</b></td><td class="rpt-num">${pct(TC.contrib, TC.rev)}</td>
+                            <td class="rpt-num">${W(TP.contrib)}</td>${rateCell(TC.contrib, TP.contrib)}</tr>
+                    </tbody></table></div>
+                <div class="rpt-note">공헌이익 = 매출 − 재료비 − 판매수수료 − 광고비. 인건비·고정비를 빼기 전, 각 제품군이 가게 운영비를 얼마나 벌어오는지 보는 숫자입니다. 식용유와 정액 광고(네이버 등)는 제품군에 나누지 않고 합계에만 넣었습니다.</div>`;
+
+            // ── 4. 채널별 매출 ──
+            const chs = keysOf(C.chan, P.chan, '', CH_ORDER);
+            html += `
+                <div class="rpt-sec">채널별 매출</div>
+                <div class="rpt-wrap"><table class="rpt-table">
+                    <thead><tr><th class="rpt-name">채널</th><th>주문</th><th>매출</th><th>구성비</th><th>객단가</th><th>직전 매출</th><th>증감률</th></tr></thead>
+                    <tbody>${chs.map(k => {
+                        const c = C.chan[k] || 0, p = P.chan[k] || 0, n = C.chanCnt[k] || 0;
+                        const d = p ? (c - p) / p * 100 : null;
+                        return `<tr><td class="rpt-name">${k}</td><td class="rpt-num">${W(n)}건</td><td class="rpt-num">${W(c)}</td>
+                            <td class="rpt-num rpt-pct">${pct(c, TC.rev)}</td><td class="rpt-num">${n ? W(c / n) : '-'}</td>
+                            <td class="rpt-num">${W(p)}</td><td class="rpt-num ${d == null ? '' : d >= 0 ? 'up' : 'down'}">${d == null ? '-' : (d >= 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(1) + '%'}</td></tr>`;
+                    }).join('')}</tbody></table></div>`;
+
+            // ── 5. 추이 — 월간: 최근 6개월 / 분기: 그 분기의 3개월 / 연간: 4개 분기 ──
+            let cols = [];
+            if (infoKind === 'm') {
+                for (let i = 5; i >= 0; i--) { const d = new Date(+infoKey.substring(0, 4), +infoKey.substring(5, 7) - 1 - i, 1);
+                    const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); if (ym >= firstYm) cols.push({ k: 'm', key: ym, label: (d.getMonth() + 1) + '월' }); }
+            } else if (infoKind === 'q') {
+                cols = infoMonthsOf('q', infoKey).filter(ym => ym >= firstYm && ym <= curYm).map(ym => ({ k: 'm', key: ym, label: (+ym.substring(5, 7)) + '월' }));
+            } else {
+                cols = [1, 2, 3, 4].map(q => ({ k: 'q', key: infoKey + '-Q' + q, label: q + '분기' }))
+                    .filter(c => infoMonthsOf('q', c.key).some(ym => ym >= firstYm && ym <= curYm));
+            }
+            const colAggs = await Promise.all(cols.map(c => infoAgg(c.k, c.key)));
+            if (token !== _infoToken) return;
+            const colT = colAggs.map(tot);
+            const manN = v => (Math.round(v / 1000) / 10).toLocaleString();
+            const trendRow = (label, f, cls) => `<tr class="${cls || ''}"><td class="rpt-name">${label}</td>${colT.map((t, i) => `<td class="rpt-num">${colAggs[i].days ? f(t, colAggs[i]) : '-'}</td>`).join('')}</tr>`;
+            html += `
+                <div class="rpt-sec">${infoKind === 'y' ? '분기별' : '월별'} 추이 <span class="rpt-unit">(단위: 만원)</span></div>
+                <div class="rpt-wrap"><table class="rpt-table rpt-trend">
+                    <thead><tr><th class="rpt-name">과목</th>${cols.map((c, i) => `<th>${c.label}${colAggs[i].partial ? '*' : ''}</th>`).join('')}</tr></thead>
+                    <tbody>
+                        ${trendRow('매출액', t => manN(t.rev), 'rpt-l0')}
+                        ${trendRow('재료비', t => manN(t.mat))}
+                        ${trendRow('판매수수료', t => manN(t.fee))}
+                        ${trendRow('광고선전비', t => manN(t.ad))}
+                        ${trendRow('인건비', t => manN(t.labor))}
+                        ${trendRow('고정비', t => manN(t.fixed))}
+                        ${trendRow('영업이익', t => manN(t.op), 'rpt-op')}
+                        ${trendRow('영업이익률', t => (t.rev ? (t.op / t.rev * 100).toFixed(1) : '0.0') + '%')}
+                        ${trendRow('주문 수', (t, a) => W(a.orders) + '건')}
+                        ${trendRow('영업일', (t, a) => a.days + '일')}
+                    </tbody></table></div>
+                <div class="rpt-note">* 진행 중인 기간 — 월세·관리비·인건비 등 월 단위 비용은 지난 영업일 비율만큼만 넣었습니다. 「추정」 표시는 그 달 실제 청구액을 아직 안 받아 직전 금액으로 넣은 항목입니다. 매출은 할인 전 주문 금액 기준(가게 부담 할인은 광고선전비).</div>`;
+
+            box.innerHTML = html;
         }
 
         // ===== 초기 로드 + 자동 갱신 =====
@@ -4205,6 +4679,7 @@
         setInterval(async () => {
             if (!DASH_ROLE || currentMode === 'profit') return;
             feesConfig = null; menuCosts = null; costsConfig = null; bmAdLog = null;
+            Object.keys(_infoMonthCache).forEach(k => delete _infoMonthCache[k]);
             Object.keys(_dayMarginCache).forEach(k => delete _dayMarginCache[k]);
             try {
                 const r = await fetch(location.pathname, { cache: 'no-cache' });
