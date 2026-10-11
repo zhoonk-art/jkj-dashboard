@@ -1237,6 +1237,10 @@
         <div id="statsView" class="hidden">
             <div class="charts-grid">
                 <div class="chart-card">
+                    <h3>🛢️ 폐유 주기</h3>
+                    <div id="oilCycleBox"></div>
+                </div>
+                <div class="chart-card">
                     <h3>🕐 시간대별 주문</h3>
                     <div id="hourlyDowFilter" style="display:flex; flex-wrap:wrap; gap:5px; margin:6px 0 10px;"></div>
                     <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
@@ -1285,10 +1289,6 @@
                 <div class="chart-card">
                     <h3>📦 발주 추천</h3>
                     <div id="chickenDowNote"></div>
-                </div>
-                <div class="chart-card">
-                    <h3>🛢️ 폐유 주기</h3>
-                    <div id="oilCycleBox"></div>
                 </div>
                 <div class="chart-card">
                     <h3>🍗 주간 닭 사용량</h3>
@@ -2961,6 +2961,7 @@
 
             // 일 평균: 진행 중인 오늘 제외 + 단체주문(이벤트) 금액 차감
             const dailyDone = daily.filter(d => d.date !== todayStr());
+            const dailyCur = daily.map(d => d.date === todayStr());   // 진행 중인 막대는 옅게 표시
             const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount - grpOf(d.date), 0) / dailyDone.length : 0;
 
             drawChart('trendChart', {
@@ -2971,7 +2972,7 @@
                         {
                             label: '일 매출 (원)',
                             data: daily.map(d => d.total_amount),
-                            backgroundColor: 'rgba(138,74,31,0.45)',
+                            backgroundColor: dailyCur.map(c => c ? 'rgba(138,74,31,0.18)' : 'rgba(138,74,31,0.45)'),
                             borderRadius: 3, order: 2
                         },
                         {
@@ -2992,7 +2993,7 @@
                         legend: { display: false },
                         tooltip: {
                             filter: item => item.datasetIndex === 0,
-                            callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` }
+                            callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${dailyCur[ctx.dataIndex] ? ' (진행 중 · 평균 제외)' : ''}` }
                         }
                     },
                     scales: {
@@ -3011,8 +3012,14 @@
             });
             const weekKeys = Object.keys(weekly).sort().slice(-12); // 문자열 정렬 = year_week 순, 최근 12주만
 
-            // 주 평균: 진행 중인 이번 주(마지막 키) 제외 + 단체주문(이벤트) 금액 차감
-            const weekDone = weekKeys.slice(0, -1);
+            // 주 평균: 진행 중인 이번 주(오늘이 속한 주) 제외 + 단체주문(이벤트) 금액 차감
+            const curWk = (() => {
+                const dt = new Date(todayStr() + 'T00:00:00');
+                const th = new Date(dt); th.setDate(th.getDate() + 3 - ((th.getDay() + 6) % 7));
+                const wk = Math.ceil(((th - new Date(th.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
+                return `week_${th.getFullYear()}_${String(wk).padStart(2, '0')}`;
+            })();
+            const weekDone = weekKeys.filter(w => w !== curWk);
             const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w] - (grpByWeek[w] || 0), 0) / weekDone.length : 0;
 
             const weekRange = i => {
@@ -3029,7 +3036,7 @@
                         {
                             label: '주 매출',
                             data: weekKeys.map(w => weekly[w]),
-                            backgroundColor: 'rgba(78,205,196,0.5)',
+                            backgroundColor: weekKeys.map(w => w === curWk ? 'rgba(78,205,196,0.2)' : 'rgba(78,205,196,0.5)'),
                             borderRadius: 3, order: 2
                         },
                         {
@@ -3048,7 +3055,7 @@
                     avgLine: { value: weeklyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { title: items => weekRange(items[0].dataIndex), label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { title: items => weekRange(items[0].dataIndex), label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${weekKeys[ctx.dataIndex] === curWk ? ' (진행 중 · 평균 제외)' : ''}` } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
@@ -3081,7 +3088,7 @@
                         {
                             label: '월 매출',
                             data: months.map(m => monthly[m].month_total),
-                            backgroundColor: 'rgba(102,126,234,0.5)',
+                            backgroundColor: months.map(m => m === curYm ? 'rgba(102,126,234,0.2)' : 'rgba(102,126,234,0.5)'),
                             borderRadius: 3, order: 2
                         },
                         {
@@ -3100,7 +3107,7 @@
                     avgLine: { value: monthlyAvg, label: '평균' },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${months[ctx.dataIndex] === curYm ? ' (진행 중 · 평균 제외)' : ''}` } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
