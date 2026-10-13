@@ -1,0 +1,7 @@
+{
+  "_help": "stocks: 6자리 종목코드. apartments: 실거래가를 볼 단지. lawdCd는 시군구 법정동코드 앞 5자리, aptNm은 실거래 신고상 단지명(부분 일치), area는 전용면적(㎡). 자세한 방법은 collect/README.md",
+  "stocks": [
+    { "code": "005930", "name": "삼성전자" }
+  ],
+  "apartments": []
+}

@@ -126,6 +126,7 @@ button { cursor: pointer; }
 .dl { font-weight: 600; white-space: nowrap; }
 
 /* chart grid */
+.charts { margin-bottom: 12px; }
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; }
 .chart header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 .chart h3 { font-size: 15px; font-weight: 700; }
@@ -344,7 +345,7 @@ const AMOUNT_METRICS = ['value', 'price', 'profit'];
 /* ============================================================
    저장소
 ============================================================ */
-const emptyDb = () => ({ v: 1, tab: 'stock', stock: { items: [], charts: [] }, re: { items: [], charts: [] } });
+const emptyDb = () => ({ v: 1, tab: 'stock', cmpRange: {}, stock: { items: [], charts: [] }, re: { items: [], charts: [] } });
 let db = load();
 
 function load() {
@@ -358,6 +359,7 @@ function normalize(o) {
   const d = emptyDb();
   if (!o || typeof o !== 'object') return d;
   d.tab = o.tab === 're' ? 're' : 'stock';
+  if (o.cmpRange && typeof o.cmpRange === 'object') for (const k of Object.keys(o.cmpRange)) if (RANGES[o.cmpRange[k]] !== undefined) d.cmpRange[k] = o.cmpRange[k];
   for (const k of ['stock', 're']) {
     const src = o[k] || {};
     d[k].items = (Array.isArray(src.items) ? src.items : []).map(it => ({
@@ -365,7 +367,7 @@ function normalize(o) {
       cur: k === 're' ? 'KRWM' : (it.cur === 'USD' ? 'USD' : 'KRW'),
       qty: k === 're' ? 1 : (+it.qty > 0 ? +it.qty : 1), avg: +it.avg || 0,
       target: +it.target > 0 ? +it.target : null, slot: Math.min(7, Math.max(0, it.slot | 0)),
-      sample: !!it.sample,
+      sample: !!it.sample, link: it.link ? String(it.link) : '',
       pts: (Array.isArray(it.pts) ? it.pts : []).filter(p => p && /^\d{4}-\d{2}-\d{2}$/.test(p.d) && isFinite(+p.v))
         .map(p => ({ d: p.d, v: +p.v })).sort((a, b) => a.d < b.d ? -1 : 1)
     }));
@@ -428,6 +430,8 @@ function fmtMoney(v, cur, compact) {
 }
 function fmtMetric(m, v, cur, compact) {
   if (v == null || !isFinite(v)) return '–';
+  if (m === 'mult') return v.toFixed(compact ? 0 : 1) + '배';
+  if (m === 'mult2') return v.toFixed(compact ? 1 : 2) + '배';
   if (m === 'ret' || m === 'chg') return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(compact ? 1 : 2) + '%';
   if (m === 'index') return v.toFixed(compact ? 0 : 1);
   if (m === 'profit') return (v > 0 ? '+' : '') + fmtMoney(v, cur, compact);
@@ -481,7 +485,7 @@ function curOf(series) {
 function kpiGroups(tab) {
   const g = {};
   for (const it of db[tab].items) {
-    if (!it.pts.length) continue;
+    if (!it.pts.length || it.link) continue;   // 실거래 비교용 호가 기록은 보유 자산이 아님
     const last = it.pts[it.pts.length - 1], prev = it.pts[it.pts.length - 2];
     const x = g[it.cur] = g[it.cur] || { cur: it.cur, value: 0, cost: 0, dPrev: 0, hasPrev: false, date: '', n: 0 };
     x.value += last.v * it.qty; x.cost += it.avg * it.qty; x.n++;
@@ -634,7 +638,7 @@ function drawChart(tab, cfg, card, series) {
         datasets: series.map(s => ({
           label: s.item.name, data: s.data, borderColor: s.color, backgroundColor: s.color,
           borderWidth: 2, tension: 0, spanGaps: true, parsing: false,
-          pointRadius: s.data.length <= 24 ? 4 : 0, pointHoverRadius: 0,
+          pointRadius: s.markers ? 3 : (s.data.length <= 24 ? 4 : 0), pointHoverRadius: 0,
           pointBackgroundColor: s.color, pointBorderColor: surface, pointBorderWidth: 2
         }))
       },
@@ -736,7 +740,8 @@ function renderAll() {
   $$('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === db.tab));
   $('#panel').setAttribute('aria-labelledby', 'tab-' + db.tab);
   const T = db[db.tab], tab = tabOf();
-  let html = '';
+  const cmp = db.tab === 'stock' ? stockCmp() : estateCmp();
+  let html = cmpSectionHTML(cmp);
 
   if (!T.items.length) {
     html += `<div class="card empty"><p>아직 등록한 ${tab.word}이 없어요.<br>${tab.word}을 추가하고 값을 기록하면 차트와 손익이 자동으로 만들어져요.</p>
@@ -760,20 +765,104 @@ function renderAll() {
   T.charts.forEach(cfg => {
     const card = $(`.chart[data-id="${cfg.id}"]`);
     if (!card) return;
-    const series = computeSeries(db.tab, cfg);
-    const cur = curOf(series);
-    const msgEl = $('.msg', card);
     if (!cfg.items.length) { showMsg(card, `표시할 ${tab.word}이 없어요. 편집에서 골라 주세요.`); return; }
-    if (!series.length) { showMsg(card, '이 기간에는 기록이 없어요.'); return; }
-    if (AMOUNT_METRICS.includes(cfg.metric) && !cur) { showMsg(card, '통화가 섞여 있어요. 수익률이나 지수화로 바꾸거나 같은 통화끼리 묶어 주세요.'); return; }
-    $('.legend', card).innerHTML = legendHTML(series, cfg, cur);
-    $('.tblwrap', card).innerHTML = tableHTML(series, cfg, cur);
-    $('.tblwrap', card).hidden = !tableOpen.has(cfg.id);
-    $('[data-act="chart-table"]', card).setAttribute('aria-pressed', tableOpen.has(cfg.id));
-    const chart = drawChart(db.tab, cfg, card, series);
-    canvasLabel(card, cfg, series, cur);
-    card.$series = series;
+    paintCard(card, cfg, computeSeries(db.tab, cfg), '이 기간에는 기록이 없어요.');
   });
+  (cmp.cards || []).forEach(c => {
+    const card = $(`.chart[data-id="${c.cfg.id}"]`);
+    if (card) paintCard(card, c.cfg, c.series, c.empty);
+  });
+}
+function paintCard(card, cfg, series, emptyMsg) {
+  const cur = curOf(series);
+  if (!series.length) { showMsg(card, emptyMsg); return; }
+  if (AMOUNT_METRICS.includes(cfg.metric) && !cur) { showMsg(card, '통화가 섞여 있어요. 수익률이나 지수화로 바꾸거나 같은 통화끼리 묶어 주세요.'); return; }
+  $('.legend', card).innerHTML = legendHTML(series, cfg, cur);
+  $('.tblwrap', card).innerHTML = tableHTML(series, cfg, cur);
+  $('.tblwrap', card).hidden = !tableOpen.has(cfg.id);
+  $('[data-act="chart-table"]', card).setAttribute('aria-pressed', tableOpen.has(cfg.id));
+  drawChart(db.tab, cfg, card, series);
+  canvasLabel(card, cfg, series, cur);
+}
+/* ============================================================
+   자동 수집 데이터 비교 차트 (data/*.json)
+============================================================ */
+let market = null, estate = null;   // null = 불러오는 중, {error} = 실패
+async function loadData() {
+  const get = async u => {
+    try { const r = await fetch(u, { cache: 'no-cache' }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); }
+    catch (e) { return { error: String(e.message || e) }; }
+  };
+  [market, estate] = await Promise.all([get('data/market.json'), get('data/realestate.json')]);
+  renderAll();
+}
+function cutRange(list, range) {
+  const days = RANGES[range];
+  if (!days) return list;
+  let end = -Infinity;
+  list.forEach(s => s.data.length && (end = Math.max(end, s.data[s.data.length - 1].x)));
+  return list.map(s => ({ ...s, data: s.data.filter(p => p.x >= end - days * DAY) }));
+}
+function loadMsg(d, what) {
+  if (d === null) return { msg: '불러오는 중…' };
+  if (d.error) return { msg: `${what} 데이터를 불러오지 못했어요 (${d.error}). 파일로 직접 열었다면 GitHub Pages 주소에서 열어 주세요.` };
+  return null;
+}
+function stockCmp() {
+  const bad = loadMsg(market, '시장');
+  if (bad) return bad;
+  const out = [];
+  for (const [code, st] of Object.entries(market.stocks || {})) {
+    const rows = (st.rows || []).slice().sort((a, b) => a.d < b.d ? -1 : 1);
+    for (const def of [{ t: 'PER', k: 'per', f: 'fper', m: 'mult' }, { t: 'PBR', k: 'pbr', f: 'fpbr', m: 'mult2' }]) {
+      const id = `cmp-${def.t.toLowerCase()}-${code}`, range = db.cmpRange[id] || '1Y';
+      const mk = (key, label, slot) => ({
+        item: { name: label, cur: undefined, slot }, color: css('--s' + (slot + 1)),
+        data: rows.filter(r => r[key] != null).map(r => ({ x: ts(r.d), y: r[key], d: r.d }))
+      });
+      const all = [mk(def.k, '후행 ' + def.t, 0), mk(def.f, '선행 ' + def.t, 1)].filter(x => x.data.length);
+      const last = rows[rows.length - 1];
+      const sub = last ? `${last.d} 기준 · 후행 ${fmtMetric(def.m, last[def.k])} / 선행 ${fmtMetric(def.m, last[def.f])} · 하루 한 점씩 쌓여요` : '아직 수집된 값이 없어요';
+      out.push({ cfg: { id, type: 'line', metric: def.m, range, title: `${st.name} 후행 vs 선행 ${def.t}` }, sub, series: cutRange(all, range).filter(x => x.data.length), empty: '아직 수집된 값이 없어요. Actions의 「Collect market data」를 실행해 주세요.' });
+    }
+  }
+  return out.length ? { cards: out } : { msg: '수집된 종목이 없어요. Actions의 「Collect market data」를 실행하거나 config/watch.json 을 확인하세요.' };
+}
+function estateCmp() {
+  const bad = loadMsg(estate, '실거래가');
+  if (bad) return bad;
+  const out = [];
+  for (const [cid, c] of Object.entries(estate.complexes || {})) {
+    const id = 'cmp-re-' + cid, range = db.cmpRange[id] || 'ALL';
+    const byDay = new Map();
+    (c.trades || []).forEach(t => { const a = byDay.get(t.d) || []; a.push(t.p); byDay.set(t.d, a); });
+    const trades = [...byDay].sort((a, b) => a[0] < b[0] ? -1 : 1)
+      .map(([d, a]) => ({ x: ts(d), y: Math.round(a.reduce((x, y) => x + y, 0) / a.length), d }));
+    const ask = db.re.items.find(i => i.link === cid);
+    const asks = ask ? ask.pts.map(p => ({ x: ts(p.d), y: p.v, d: p.d })) : [];
+    const mk = (name, slot, data) => ({ item: { name, cur: 'KRWM', slot }, color: css('--s' + (slot + 1)), markers: true, data });
+    const all = [mk('실거래가', 0, trades), mk('호가', 1, asks)].filter(x => x.data.length);
+    out.push({
+      cid, cfg: { id, type: 'line', metric: 'value', range, title: `${c.name || cid} 실거래가 vs 호가` },
+      sub: `${c.area ? c.area + '㎡ · ' : ''}실거래 ${(c.trades || []).length}건(같은 날은 평균) · 호가 ${asks.length}건`,
+      series: cutRange(all, range).filter(x => x.data.length), isRe: true,
+      empty: '표시할 거래/호가가 없어요. 호가는 「호가 입력」으로 기록하세요.'
+    });
+  }
+  return out.length ? { cards: out } : { msg: '관심 단지가 아직 없어요. config/watch.json 의 apartments 에 단지를 넣고 Actions에서 수집을 실행하세요. (collect/README.md)' };
+}
+function cmpSectionHTML(cmp) {
+  const title = db.tab === 'stock' ? '밸류에이션 비교 (후행 vs 선행)' : '실거래가 vs 호가';
+  let h = `<div class="sec-head" style="margin-top:4px"><h2>${title}</h2></div>`;
+  if (cmp.msg) return h + `<div class="card msg">${esc(cmp.msg)}</div>`;
+  return h + '<div class="charts">' + cmp.cards.map(c => {
+    const chips = Object.keys(RANGES).map(r => `<button class="chip" data-act="range" data-r="${r}" aria-pressed="${c.cfg.range === r}">${r === 'ALL' ? '전체' : r.replace('M', '개월').replace('Y', '년')}</button>`).join('');
+    return `<article class="card chart" data-id="${c.cfg.id}" data-cmp="1"${c.isRe ? ` data-cid="${esc(c.cid)}"` : ''}>
+      <header><div><h3>${esc(c.cfg.title)}</h3><div class="sub">${esc(c.sub)}</div></div>
+      <div class="tools"><button class="btn sm" data-act="chart-table" aria-pressed="false">표</button>${c.isRe ? '<button class="btn sm primary" data-act="ask-input">호가 입력</button>' : ''}</div></header>
+      <div class="chips" role="group" aria-label="기간">${chips}</div><div class="legend"></div>
+      <div class="plot"><canvas></canvas><div class="tip" hidden></div></div><div class="tblwrap" hidden></div></article>`;
+  }).join('') + '</div>';
 }
 function showMsg(card, text) {
   const plot = $('.plot', card);
@@ -806,6 +895,7 @@ function chartCardHTML(cfg) {
 }
 function kpiHTML(tab) {
   const groups = kpiGroups(tab);
+  if (!groups.length && db[tab].items.every(i => i.link)) return '';
   if (!groups.length) return `<div class="card empty"><p>아직 값이 기록되지 않았어요. 아래 목록에서 「기록」을 눌러 현재 값을 입력하세요.</p></div>` + '';
   const word = tab === 'stock' ? '평가금액' : '총 시세';
   const profitWord = tab === 'stock' ? '평가손익' : '평가차익';
@@ -827,7 +917,7 @@ function itemsTableHTML(tab) {
   const rows = T.items.map(it => {
     const last = it.pts[it.pts.length - 1], prev = it.pts[it.pts.length - 2];
     const sw = `<i style="background:var(--s${it.slot + 1})"></i>`;
-    const nm = `<span class="nm">${sw}<span>${esc(it.name)}${it.sample ? '<span class="tag">샘플</span>' : ''}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span></span>`;
+    const nm = `<span class="nm">${sw}<span>${esc(it.name)}${it.sample ? '<span class="tag">샘플</span>' : ''}${it.link ? '<span class="tag">호가 기록</span>' : ''}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span></span>`;
     const price = last ? fmtMoney(last.v, it.cur) : '–';
     const val = last ? fmtMoney(last.v * it.qty, it.cur) : '–';
     const dp = last && prev ? deltaHTML((last.v / prev.v - 1) * 100) : '<span class="flat">–</span>';
@@ -867,8 +957,20 @@ $('#panel').addEventListener('click', e => {
       T.charts = T.charts.filter(x => x.id !== c.id); save(); renderAll(); break;
     }
     case 'range': {
-      const c = T.charts.find(x => x.id === card.dataset.id);
-      c.range = b.dataset.r; save(); renderAll(); break;
+      if (card.dataset.cmp) db.cmpRange[card.dataset.id] = b.dataset.r;
+      else T.charts.find(x => x.id === card.dataset.id).range = b.dataset.r;
+      save(); renderAll(); break;
+    }
+    case 'ask-input': {
+      const cid = card.dataset.cid, c = ((estate && estate.complexes) || {})[cid];
+      let it = db.re.items.find(i => i.link === cid);
+      if (!it && c) {
+        // 차트에서 호가 선은 항상 2번 색이라, 표의 색 점도 같게 맞춘다
+        it = { id: uid(), name: `${c.name || cid} 호가`, sub: '실거래가 비교용 호가 기록', cur: 'KRWM', qty: 1, avg: 0, target: null, slot: 1, sample: false, link: cid, pts: [] };
+        db.re.items.push(it); save();
+      }
+      if (it) openRec(it.id);
+      break;
     }
     case 'chart-table': {
       const id = card.dataset.id;
@@ -950,7 +1052,7 @@ function openRec(id) {
   recId = id;
   const it = currentItem(), f = $('#fRec');
   $('#recTitle').textContent = `${it.name} · 기록`;
-  $('#lblRecV').textContent = db.tab === 'stock' ? `현재가 (${it.cur === 'USD' ? 'USD' : '원'})` : '시세 (만원)';
+  $('#lblRecV').textContent = db.tab === 'stock' ? `현재가 (${it.cur === 'USD' ? 'USD' : '원'})` : (it.link ? '호가 (만원)' : '시세 (만원)');
   f.reset(); f.d.value = todayStr(); $('#bulk').value = '';
   const last = it.pts[it.pts.length - 1]; if (last) f.v.value = last.v;
   renderRecList();
@@ -1152,6 +1254,7 @@ $('#btnTheme').addEventListener('click', () => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderAll());
 
 renderAll();
+loadData();
 </script>
 </body>
 </html>
