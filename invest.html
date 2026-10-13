@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>투자 트래커</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #6b6a65;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,.10);
+  --hover: rgba(11,11,11,.05);
+  --accent: #7a3a16;
+  --accent-ink: #ffffff;
+  --up: #d03b3b;
+  --down: #1c5cab;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #9d9c94;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,.10);
+    --hover: rgba(255,255,255,.07);
+    --accent: #e0a67f;
+    --accent-ink: #1a1a19;
+    --up: #ee6b6b;
+    --down: #6da7ec;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #9d9c94;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255,255,255,.10);
+  --hover: rgba(255,255,255,.07);
+  --accent: #e0a67f;
+  --accent-ink: #1a1a19;
+  --up: #ee6b6b;
+  --down: #6da7ec;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { max-width: 100%; overflow-x: hidden; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  background: var(--page);
+  color: var(--text-primary);
+  line-height: 1.45;
+  padding: 16px;
+}
+.wrap { max-width: 1200px; margin: 0 auto; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* header */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.top h1 { font-size: 20px; font-weight: 700; }
+.top .note { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.top .tools { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.btn {
+  min-height: 36px; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  font-size: 13px; font-weight: 600;
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--up); }
+.btn.sm { min-height: 30px; padding: 3px 9px; font-size: 12px; }
+.btn[aria-pressed="true"] { background: var(--hover); border-color: var(--text-muted); }
+@media (pointer: coarse) { .btn { min-height: 44px; } .btn.sm { min-height: 40px; } }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab {
+  padding: 10px 20px; border: 0; background: none; font-size: 15px; font-weight: 600;
+  color: var(--text-secondary); border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--text-primary); }
+.tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+/* cards + sections */
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 22px 0 10px; flex-wrap: wrap; }
+.sec-head h2 { font-size: 16px; font-weight: 700; }
+.sec-head .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* KPI */
+.kpi-group { margin-bottom: 10px; }
+.kpi-group > .gl { font-size: 12px; color: var(--text-muted); margin: 0 2px 6px; }
+.kpis { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; }
+.kpi .l { font-size: 12px; color: var(--text-secondary); }
+.kpi .v { font-size: 28px; font-weight: 700; margin: 2px 0; letter-spacing: -.01em; word-break: keep-all; }
+.kpi .v.md { font-size: 22px; }
+.kpi .s { font-size: 12px; color: var(--text-muted); }
+@media (max-width: 640px) { .kpis { grid-template-columns: 1fr 1fr; } .kpi.hero { grid-column: 1 / -1; } .kpi .v { font-size: 24px; } .kpi .v.md { font-size: 19px; } }
+
+.up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--text-muted); }
+.dl { font-weight: 600; white-space: nowrap; }
+
+/* chart grid */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; }
+.chart header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.chart h3 { font-size: 15px; font-weight: 700; }
+.chart .sub { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.chart .tools { display: flex; gap: 4px; flex-shrink: 0; }
+.chips { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.chip {
+  min-height: 28px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border);
+  background: none; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+}
+.chip:hover { background: var(--hover); }
+.chip[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+@media (pointer: coarse) { .chip { min-height: 38px; padding: 4px 14px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; }
+.lg { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 3px 0; font-size: 12px; color: var(--text-secondary); }
+.lg i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.lg b { font-weight: 600; color: var(--text-primary); }
+.lg.off { opacity: .4; text-decoration: line-through; }
+.plot { position: relative; height: 280px; }
+.plot canvas { touch-action: pan-y; }
+.plot.bar { height: auto; }
+.tip {
+  position: absolute; top: 8px; z-index: 5; pointer-events: none; min-width: 150px; max-width: 260px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.14); font-size: 12px;
+}
+.tip[hidden] { display: none; }
+.tip .tt { color: var(--text-muted); margin-bottom: 4px; }
+.tip .tr { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+.tip .tr i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tip .tr .n { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tip .tr b { font-weight: 600; }
+.tip .tr em { font-style: normal; color: var(--text-muted); font-size: 11px; }
+.msg { padding: 40px 12px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.tblwrap { max-height: 240px; overflow: auto; margin-top: 8px; border-top: 1px solid var(--border); }
+.tblwrap[hidden] { display: none; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 12px; font-weight: 600; color: var(--text-muted); position: sticky; top: 0; background: var(--surface-1); }
+td.act { text-align: right; }
+td.act .btn { margin-left: 3px; }
+.nm { display: inline-flex; align-items: center; gap: 8px; }
+.nm i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.nm small { color: var(--text-muted); font-size: 11px; display: block; }
+.scroll { overflow-x: auto; }
+.tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--hover); color: var(--text-muted); margin-left: 6px; }
+
+.empty { text-align: center; padding: 36px 16px; color: var(--text-secondary); }
+.empty p { margin-bottom: 12px; font-size: 14px; }
+.empty .btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+/* dialogs */
+dialog {
+  border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--surface-1); color: var(--text-primary);
+  width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px);
+}
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog form { padding: 18px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 26px); overflow: auto; }
+dialog h2 { font-size: 17px; }
+.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.f input, .f select, .f textarea {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--page);
+  font-size: 15px; min-height: 40px; width: 100%;
+}
+.f textarea { min-height: 80px; resize: vertical; font-size: 13px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hint { font-size: 11px; color: var(--text-muted); }
+.warn { font-size: 12px; color: var(--up); }
+.dfoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg label { padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--text-primary); color: var(--surface-1); font-weight: 600; }
+.seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.picks { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+.pick { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; font-size: 14px; color: var(--text-primary); cursor: pointer; }
+.pick:hover { background: var(--hover); }
+.pick input { width: 18px; height: 18px; min-height: 0; flex-shrink: 0; }
+.pick i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pick.dis { opacity: .4; cursor: not-allowed; }
+.reclist { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.reclist .r { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.reclist .r:last-child { border-bottom: 0; }
+.reclist .x { border: 0; background: none; color: var(--text-muted); padding: 6px 10px; border-radius: 6px; font-size: 14px; }
+.reclist .x:hover { color: var(--up); background: var(--hover); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>투자 트래커</h1>
+      <div class="note">입력한 데이터는 이 기기의 브라우저에만 저장돼요 · 기기를 옮길 땐 내보내기/가져오기를 쓰세요</div>
+    </div>
+    <div class="tools">
+      <button class="btn" id="btnTheme" type="button">테마</button>
+      <button class="btn" id="btnExport" type="button">내보내기</button>
+      <button class="btn" id="btnImport" type="button">가져오기</button>
+      <input type="file" id="fileImport" accept="application/json,.json" hidden>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="자산 종류">
+    <button class="tab" role="tab" id="tab-stock" data-tab="stock" aria-controls="panel">주식</button>
+    <button class="tab" role="tab" id="tab-re" data-tab="re" aria-controls="panel">부동산</button>
+  </div>
+
+  <main id="panel" role="tabpanel"></main>
+</div>
+
+<!-- 종목/매물 추가·편집 -->
+<dialog id="dlgItem">
+  <form id="fItem">
+    <h2 id="itemTitle"></h2>
+    <label class="f"><span id="lblName">이름</span><input name="name" required maxlength="40" autocomplete="off"></label>
+    <label class="f"><span id="lblSub">메모</span><input name="sub" maxlength="40" autocomplete="off"></label>
+    <div class="row">
+      <label class="f" data-only="stock"><span>통화</span>
+        <select name="cur"><option value="KRW">원 (KRW)</option><option value="USD">달러 (USD)</option></select>
+      </label>
+      <label class="f" data-only="stock"><span>보유 수량</span><input name="qty" type="number" inputmode="decimal" step="any" min="0" value="1"></label>
+    </div>
+    <div class="row">
+      <label class="f"><span id="lblAvg">평균 매수가</span><input name="avg" type="number" inputmode="decimal" step="any" min="0" required></label>
+      <label class="f"><span id="lblTarget">목표가 (선택)</span><input name="target" type="number" inputmode="decimal" step="any" min="0"></label>
+    </div>
+    <div class="row" id="initRow">
+      <label class="f"><span id="lblInit">현재가 (선택)</span><input name="initv" type="number" inputmode="decimal" step="any" min="0"></label>
+      <label class="f"><span>기록 날짜</span><input name="initd" type="date"></label>
+    </div>
+    <div class="hint" id="unitHint"></div>
+    <div class="dfoot">
+      <button class="btn" type="button" data-close>취소</button>
+      <button class="btn primary" type="submit">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 기록 추가 -->
+<dialog id="dlgRec">
+  <form id="fRec">
+    <h2 id="recTitle"></h2>
+    <div class="row">
+      <label class="f"><span>날짜</span><input name="d" type="date" required></label>
+      <label class="f"><span id="lblRecV">값</span><input name="v" type="number" inputmode="decimal" step="any" min="0" required></label>
+    </div>
+    <div class="dfoot" style="margin-top:-4px"><button class="btn primary" type="submit">기록 추가</button></div>
+    <label class="f"><span>여러 건 붙여넣기 (한 줄에 하나: 날짜,값)</span>
+      <textarea id="bulk" placeholder="2026-09-01,71200&#10;2026-09-02,72000"></textarea>
+    </label>
+    <div class="dfoot" style="margin-top:-4px"><button class="btn" type="button" id="btnBulk">일괄 추가</button></div>
+    <div class="f"><span>기록 목록 (최근순)</span><div class="reclist" id="recList"></div></div>
+    <div class="dfoot"><button class="btn" type="button" data-close>닫기</button></div>
+  </form>
+</dialog>
+
+<!-- 차트 만들기 -->
+<dialog id="dlgChart">
+  <form id="fChart">
+    <h2 id="chartDlgTitle"></h2>
+    <label class="f"><span>차트 이름 (비워두면 자동)</span><input name="title" maxlength="40" autocomplete="off"></label>
+    <div class="f"><span>차트 종류</span>
+      <div class="seg" role="radiogroup" aria-label="차트 종류">
+        <label><input type="radio" name="type" value="line" checked>추이 (라인)</label>
+        <label><input type="radio" name="type" value="bar">비교 (막대)</label>
+      </div>
+    </div>
+    <div class="row">
+      <label class="f"><span>보고 싶은 값</span><select name="metric"></select></label>
+      <label class="f"><span>기간</span>
+        <select name="range"><option value="1M">1개월</option><option value="3M">3개월</option><option value="6M">6개월</option><option value="1Y">1년</option><option value="ALL">전체</option></select>
+      </label>
+    </div>
+    <div class="f"><span id="pickLbl">표시할 항목 (색이 겹치지 않게 최대 8개)</span><div class="picks" id="picks"></div></div>
+    <div class="warn" id="chartWarn" hidden></div>
+    <div class="dfoot">
+      <button class="btn" type="button" data-close>취소</button>
+      <button class="btn primary" type="submit">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+'use strict';
+/* ============================================================
+   설정
+============================================================ */
+const STORE_KEY = 'jkj-invest-v1';
+const THEME_KEY = 'jkj-invest-theme';
+const DAY = 864e5;
+const RANGES = { '1M': 30, '3M': 91, '6M': 182, '1Y': 365, 'ALL': null };
+const RANGE_LABEL = { '1M': '최근 1개월', '3M': '최근 3개월', '6M': '최근 6개월', '1Y': '최근 1년', 'ALL': '전체 기간' };
+const METRIC_ALL = {
+  value: '평가금액', price: '현재가', profit: '평가손익', ret: '수익률 (매입 대비)',
+  index: '지수화 (시작=100)', chg: '기간 등락률'
+};
+const TABS = {
+  stock: {
+    key: 'stock', label: '주식', word: '종목',
+    metrics: ['value', 'price', 'profit', 'ret', 'index', 'chg'],
+    labels: {}
+  },
+  re: {
+    key: 're', label: '부동산', word: '매물',
+    metrics: ['value', 'profit', 'ret', 'index', 'chg'],
+    labels: { value: '시세', profit: '평가차익' }
+  }
+};
+const LINE_METRICS = ['value', 'price', 'profit', 'ret', 'index'];
+const BAR_METRICS = ['value', 'price', 'profit', 'ret', 'chg'];
+const AMOUNT_METRICS = ['value', 'price', 'profit'];
+
+/* ============================================================
+   저장소
+============================================================ */
+const emptyDb = () => ({ v: 1, tab: 'stock', stock: { items: [], charts: [] }, re: { items: [], charts: [] } });
+let db = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return normalize(JSON.parse(raw));
+  } catch (e) { /* 저장소를 못 읽으면 빈 상태로 시작 */ }
+  return emptyDb();
+}
+function normalize(o) {
+  const d = emptyDb();
+  if (!o || typeof o !== 'object') return d;
+  d.tab = o.tab === 're' ? 're' : 'stock';
+  for (const k of ['stock', 're']) {
+    const src = o[k] || {};
+    d[k].items = (Array.isArray(src.items) ? src.items : []).map(it => ({
+      id: String(it.id || uid()), name: String(it.name || '이름 없음'), sub: String(it.sub || ''),
+      cur: k === 're' ? 'KRWM' : (it.cur === 'USD' ? 'USD' : 'KRW'),
+      qty: k === 're' ? 1 : (+it.qty > 0 ? +it.qty : 1), avg: +it.avg || 0,
+      target: +it.target > 0 ? +it.target : null, slot: Math.min(7, Math.max(0, it.slot | 0)),
+      sample: !!it.sample,
+      pts: (Array.isArray(it.pts) ? it.pts : []).filter(p => p && /^\d{4}-\d{2}-\d{2}$/.test(p.d) && isFinite(+p.v))
+        .map(p => ({ d: p.d, v: +p.v })).sort((a, b) => a.d < b.d ? -1 : 1)
+    }));
+    d[k].charts = (Array.isArray(src.charts) ? src.charts : []).map(c => ({
+      id: String(c.id || uid()), title: String(c.title || ''), type: c.type === 'bar' ? 'bar' : 'line',
+      metric: METRIC_ALL[c.metric] ? c.metric : 'ret', range: RANGES[c.range] !== undefined ? c.range : '6M',
+      items: Array.isArray(c.items) ? c.items.map(String) : []
+    }));
+  }
+  return d;
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { toast('저장 공간을 쓸 수 없어요. 내보내기로 백업하세요.'); }
+}
+
+/* ============================================================
+   유틸
+============================================================ */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const uid = () => Math.random().toString(36).slice(2, 9);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const ts = d => Date.parse(d + 'T00:00:00Z');
+const pad2 = n => String(n).padStart(2, '0');
+const todayStr = () => { const t = new Date(); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`; };
+const fmtDate = t => { const x = new Date(t); return `${x.getUTCFullYear()}.${pad2(x.getUTCMonth() + 1)}.${pad2(x.getUTCDate())}`; };
+const trim1 = (n, d) => { const s = n.toFixed(d); return d && s.includes('.') ? s.replace(/\.?0+$/, '') : s; };
+const tabOf = () => TABS[db.tab];
+const metricLabel = (tab, m) => TABS[tab].labels[m] || METRIC_ALL[m];
+
+function fmtMoney(v, cur, compact) {
+  if (v == null || !isFinite(v)) return '–';
+  if (cur === 'USD') {
+    const a = Math.abs(v);
+    const s = compact && a >= 1e6 ? trim1(a / 1e6, 1) + 'M'
+      : compact && a >= 1e4 ? trim1(a / 1e3, 0) + 'K'
+      : a.toLocaleString('en-US', { minimumFractionDigits: compact ? 0 : 2, maximumFractionDigits: 2 });
+    return (v < 0 ? '−' : '') + '$' + s;
+  }
+  const won = cur === 'KRWM' ? v * 1e4 : v;
+  const neg = won < 0 ? '−' : '';
+  const a = Math.abs(won);
+  let out;
+  if (a >= 1e8) {
+    if (compact) out = trim1(a / 1e8, 1) + '억';
+    else {
+      let eok = Math.floor(a / 1e8), man = Math.round((a - eok * 1e8) / 1e4);
+      if (man === 10000) { eok++; man = 0; }
+      out = eok.toLocaleString('ko-KR') + '억' + (man ? ' ' + man.toLocaleString('ko-KR') + '만' : '');
+    }
+  } else if (compact) {
+    out = a >= 1e4 ? trim1(a / 1e4, 1) + '만' : Math.round(a).toLocaleString('ko-KR');
+  } else if (a >= 1e6) {
+    out = Math.round(a / 1e4).toLocaleString('ko-KR') + '만';
+  } else {
+    out = Math.round(a).toLocaleString('ko-KR');
+  }
+  return neg + out + (compact ? '' : '원');
+}
+function fmtMetric(m, v, cur, compact) {
+  if (v == null || !isFinite(v)) return '–';
+  if (m === 'ret' || m === 'chg') return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(compact ? 1 : 2) + '%';
+  if (m === 'index') return v.toFixed(compact ? 0 : 1);
+  if (m === 'profit') return (v > 0 ? '+' : '') + fmtMoney(v, cur, compact);
+  return fmtMoney(v, cur, compact);
+}
+function deltaHTML(p, digits = 2) {
+  if (p == null || !isFinite(p)) return '<span class="flat">–</span>';
+  const c = p > 0.005 ? 'up' : p < -0.005 ? 'down' : 'flat';
+  const g = c === 'up' ? '▲' : c === 'down' ? '▼' : '–';
+  return `<span class="dl ${c}">${g} ${Math.abs(p).toFixed(digits)}%</span>`;
+}
+function amountDeltaHTML(v, cur) {
+  const c = v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
+  const g = c === 'up' ? '▲' : c === 'down' ? '▼' : '–';
+  return `<span class="dl ${c}">${g} ${fmtMoney(Math.abs(v), cur)}</span>`;
+}
+function toast(msg) { alert(msg); }
+
+/* ============================================================
+   계산
+============================================================ */
+function metricVal(m, it, v, base) {
+  switch (m) {
+    case 'value': return v * it.qty;
+    case 'price': return v;
+    case 'profit': return (v - it.avg) * it.qty;
+    case 'ret': return it.avg > 0 ? (v / it.avg - 1) * 100 : null;
+    case 'index': return base ? v / base * 100 : null;
+    case 'chg': return base ? (v / base - 1) * 100 : null;
+  }
+  return null;
+}
+function computeSeries(tab, cfg) {
+  const items = cfg.items.map(id => db[tab].items.find(i => i.id === id)).filter(Boolean);
+  let anchor = 0;
+  items.forEach(i => { if (i.pts.length) anchor = Math.max(anchor, ts(i.pts[i.pts.length - 1].d)); });
+  const days = RANGES[cfg.range];
+  const cutoff = days ? anchor - days * DAY : -Infinity;
+  return items.map(it => {
+    const pts = it.pts.filter(p => ts(p.d) >= cutoff);
+    const base = pts.length ? pts[0].v : null;
+    const data = pts.map(p => ({ x: ts(p.d), y: metricVal(cfg.metric, it, p.v, base), d: p.d }))
+      .filter(p => p.y != null && isFinite(p.y));
+    return { item: it, color: css('--s' + (it.slot + 1)), data };
+  }).filter(s => s.data.length);
+}
+function curOf(series) {
+  const s = new Set(series.map(x => x.item.cur));
+  return s.size === 1 ? [...s][0] : null;
+}
+function kpiGroups(tab) {
+  const g = {};
+  for (const it of db[tab].items) {
+    if (!it.pts.length) continue;
+    const last = it.pts[it.pts.length - 1], prev = it.pts[it.pts.length - 2];
+    const x = g[it.cur] = g[it.cur] || { cur: it.cur, value: 0, cost: 0, dPrev: 0, hasPrev: false, date: '', n: 0 };
+    x.value += last.v * it.qty; x.cost += it.avg * it.qty; x.n++;
+    if (prev) { x.dPrev += (last.v - prev.v) * it.qty; x.hasPrev = true; }
+    if (last.d > x.date) x.date = last.d;
+  }
+  return Object.values(g);
+}
+
+/* ============================================================
+   차트 (Chart.js)
+============================================================ */
+Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
+Chart.defaults.font.size = 12;
+let charts = {};
+const tableOpen = new Set();
+
+function dateTicks(min, max) {
+  const days = (max - min) / DAY, out = [];
+  if (days <= 45) {
+    const step = days <= 10 ? 1 : days <= 21 ? 3 : 7;
+    for (let t = min; t <= max; t += step * DAY) out.push(t);
+    return { ticks: out, fmt: t => { const x = new Date(t); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}`; } };
+  }
+  const step = days <= 200 ? 1 : days <= 400 ? 2 : days <= 800 ? 3 : 6;
+  const s = new Date(min);
+  let y = s.getUTCFullYear(), m = s.getUTCMonth();
+  if (Date.UTC(y, m, 1) < min) m++;
+  for (;;) {
+    const t = Date.UTC(y, m, 1);
+    if (t > max) break;
+    out.push(t);
+    m += step; y += Math.floor(m / 12); m %= 12;
+  }
+  return { ticks: out, fmt: t => { const x = new Date(t); return `${String(x.getUTCFullYear()).slice(2)}.${pad2(x.getUTCMonth() + 1)}`; } };
+}
+
+const hoverPlugin = {
+  id: 'jkjHover',
+  afterEvent(chart, args) {
+    if (!chart.$line) return;
+    const e = args.event, a = chart.chartArea;
+    const inside = e.type !== 'mouseout' && e.x != null && e.x >= a.left && e.x <= a.right && e.y >= a.top && e.y <= a.bottom;
+    if (!inside) {
+      if (chart.$hover != null) { chart.$hover = null; chart.$tip.hidden = true; args.changed = true; }
+      return;
+    }
+    const xv = chart.scales.x.getValueForPixel(e.x);
+    const xs = visibleXs(chart);
+    if (!xs.length) return;
+    let best = xs[0];
+    for (const t of xs) if (Math.abs(t - xv) < Math.abs(best - xv)) best = t;
+    if (best !== chart.$hover) { chart.$hover = best; args.changed = true; renderTip(chart); }
+  },
+  afterDatasetsDraw(chart) {
+    if (chart.$hover == null) return;
+    const { ctx, chartArea: a, scales: { x, y } } = chart;
+    const px = x.getPixelForValue(chart.$hover);
+    ctx.save();
+    ctx.strokeStyle = css('--baseline'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+    chart.data.datasets.forEach((ds, i) => {
+      if (!chart.isDatasetVisible(i)) return;
+      const p = ds.data.find(q => q.x === chart.$hover);
+      if (!p) return;
+      ctx.beginPath(); ctx.arc(px, y.getPixelForValue(p.y), 5, 0, Math.PI * 2);
+      ctx.fillStyle = ds.borderColor; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = css('--surface-1'); ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+function visibleXs(chart) {
+  const set = new Set();
+  chart.data.datasets.forEach((ds, i) => { if (chart.isDatasetVisible(i)) ds.data.forEach(p => set.add(p.x)); });
+  return [...set].sort((a, b) => a - b);
+}
+function renderTip(chart) {
+  const tip = chart.$tip, t = chart.$hover, rows = [];
+  chart.data.datasets.forEach((ds, i) => {
+    if (!chart.isDatasetVisible(i)) return;
+    let exact = null, prior = null;
+    for (const p of ds.data) { if (p.x === t) exact = p; if (p.x <= t) prior = p; }
+    const p = exact || prior;
+    if (p) rows.push({ n: ds.label, c: ds.borderColor, y: p.y, exact: !!exact, d: p.d });
+  });
+  rows.sort((a, b) => b.y - a.y);
+  tip.innerHTML = `<div class="tt">${fmtDate(t)}</div>` + rows.map(r =>
+    `<div class="tr"><i style="background:${r.c}"></i><span class="n">${esc(r.n)}</span><b>${fmtMetric(chart.$metric, r.y, chart.$cur)}</b>${r.exact ? '' : `<em>${r.d.slice(5).replace('-', '/')}</em>`}</div>`).join('');
+  tip.hidden = false;
+  const px = chart.scales.x.getPixelForValue(t), w = tip.offsetWidth, W = chart.width;
+  tip.style.left = (px + 14 + w > W ? Math.max(0, px - 14 - w) : px + 14) + 'px';
+}
+const endLabelPlugin = {
+  id: 'jkjEndLabels',
+  afterDatasetsDraw(chart) {
+    if (!chart.$line) return;
+    const vis = chart.data.datasets.map((ds, i) => ({ ds, i })).filter(o => chart.isDatasetVisible(o.i));
+    if (vis.length < 2 || vis.length > 4) return;
+    const labels = vis.map(o => {
+      const m = chart.getDatasetMeta(o.i), el = m.data[m.data.length - 1];
+      return el ? { name: o.ds.label.length > 7 ? o.ds.label.slice(0, 6) + '…' : o.ds.label, x: el.x, y: el.y } : null;
+    }).filter(Boolean).sort((a, b) => a.y - b.y);
+    for (let k = 1; k < labels.length; k++) if (labels[k].y - labels[k - 1].y < 14) labels[k].y = labels[k - 1].y + 14;
+    const { ctx } = chart;
+    ctx.save();
+    ctx.fillStyle = css('--text-secondary'); ctx.font = '11px ' + Chart.defaults.font.family;
+    ctx.textBaseline = 'middle';
+    labels.forEach(l => ctx.fillText(l.name, l.x + 8, l.y));
+    ctx.restore();
+  }
+};
+const barLabelPlugin = {
+  id: 'jkjBarLabels',
+  afterDatasetsDraw(chart) {
+    if (!chart.$bar) return;
+    const { ctx } = chart, meta = chart.getDatasetMeta(0), vals = chart.data.datasets[0].data;
+    ctx.save();
+    ctx.fillStyle = css('--text-primary'); ctx.font = '600 12px ' + Chart.defaults.font.family; ctx.textBaseline = 'middle';
+    meta.data.forEach((el, i) => {
+      const v = vals[i], s = fmtMetric(chart.$metric, v, chart.$cur, true);
+      if (v >= 0) { ctx.textAlign = 'left'; ctx.fillText(s, el.x + 6, el.y); }
+      else { ctx.textAlign = 'right'; ctx.fillText(s, el.x - 6, el.y); }
+    });
+    ctx.restore();
+  }
+};
+
+function baseOptions() {
+  return { responsive: true, maintainAspectRatio: false, animation: false };
+}
+function yTickColors(m) {
+  const grid = css('--grid'), base = css('--baseline');
+  return ctx => (ctx.tick && ctx.tick.value === 0 && (m === 'ret' || m === 'chg' || m === 'profit')) ? base : grid;
+}
+
+function drawChart(tab, cfg, card, series) {
+  const canvas = $('canvas', card), tip = $('.tip', card), cur = curOf(series);
+  const muted = css('--text-muted'), surface = css('--surface-1');
+  let chart;
+  if (cfg.type === 'line') {
+    let min = Infinity, max = -Infinity;
+    series.forEach(s => s.data.forEach(p => { min = Math.min(min, p.x); max = Math.max(max, p.x); }));
+    if (min === max) { min -= 3 * DAY; max += 3 * DAY; }
+    const dt = dateTicks(min, max);
+    const showEnd = series.length >= 2 && series.length <= 4;
+    chart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        datasets: series.map(s => ({
+          label: s.item.name, data: s.data, borderColor: s.color, backgroundColor: s.color,
+          borderWidth: 2, tension: 0, spanGaps: true, parsing: false,
+          pointRadius: s.data.length <= 24 ? 4 : 0, pointHoverRadius: 0,
+          pointBackgroundColor: s.color, pointBorderColor: surface, pointBorderWidth: 2
+        }))
+      },
+      options: {
+        ...baseOptions(),
+        layout: { padding: { right: showEnd ? 66 : 10, top: 6 } },
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: {
+            type: 'linear', min, max, grid: { display: false },
+            border: { color: css('--baseline') },
+            afterBuildTicks(sc) { sc.ticks = dt.ticks.map(v => ({ value: v })); },
+            ticks: { color: muted, maxRotation: 0, autoSkip: false, callback: v => dt.fmt(v) }
+          },
+          y: {
+            grid: { color: yTickColors(cfg.metric), drawBorder: false },
+            afterDataLimits(sc) { const p = (sc.max - sc.min) * 0.08 || 1; sc.min -= p; sc.max += p; },
+            ticks: { color: muted, maxTicksLimit: 5, callback: v => fmtMetric(cfg.metric, v, cur, true) }
+          }
+        }
+      },
+      plugins: [hoverPlugin, endLabelPlugin]
+    });
+    chart.$line = true;
+  } else {
+    const vals = series.map(s => s.data[s.data.length - 1].y);
+    const h = Math.max(120, series.length * 38 + 44);
+    $('.plot', card).style.height = h + 'px';
+    chart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: series.map(s => s.item.name),
+        datasets: [{
+          data: vals, backgroundColor: series.map(s => s.color), borderRadius: 4, borderSkipped: false,
+          maxBarThickness: 22, categoryPercentage: .8
+        }]
+      },
+      options: {
+        ...baseOptions(), indexAxis: 'y',
+        layout: { padding: { right: 70 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: surface, titleColor: css('--text-muted'), bodyColor: css('--text-primary'),
+            borderColor: css('--border'), borderWidth: 1, padding: 10, displayColors: true, boxPadding: 4,
+            callbacks: { label: c => ' ' + fmtMetric(cfg.metric, c.parsed.x, cur) }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true, grid: { color: yTickColors(cfg.metric), drawBorder: false },
+            ticks: { color: muted, maxTicksLimit: 5, callback: v => fmtMetric(cfg.metric, v, cur, true) }
+          },
+          y: {
+            grid: { display: false }, border: { color: css('--baseline') },
+            ticks: {
+              color: css('--text-secondary'), autoSkip: false,
+              callback(v) { const s = String(this.getLabelForValue(v)); return s.length > 12 ? s.slice(0, 11) + '…' : s; }
+            }
+          }
+        }
+      },
+      plugins: [barLabelPlugin]
+    });
+    chart.$bar = true;
+  }
+  chart.$tip = tip; chart.$metric = cfg.metric; chart.$cur = cur;
+  charts[cfg.id] = chart;
+  chart.update('none');   // 플러그인이 쓰는 $ 플래그를 세팅한 뒤 한 번 더 그려서 라벨을 표시
+  return chart;
+}
+
+function legendHTML(series, cfg, cur) {
+  if (series.length < 2) return '';
+  return series.map((s, i) => {
+    const last = s.data[s.data.length - 1].y;
+    return `<button type="button" class="lg" data-act="legend" data-i="${i}" aria-pressed="true" title="클릭해서 숨기기/보이기"><i style="background:${s.color}"></i>${esc(s.item.name)} <b>${fmtMetric(cfg.metric, last, cur)}</b></button>`;
+  }).join('');
+}
+function tableHTML(series, cfg, cur) {
+  if (cfg.type === 'bar') {
+    return `<table><thead><tr><th>${tabOf().word}</th><th>최신 기록일</th><th>${esc(metricLabel(db.tab, cfg.metric))}</th></tr></thead><tbody>` +
+      series.map(s => { const p = s.data[s.data.length - 1]; return `<tr><td>${esc(s.item.name)}</td><td>${p.d}</td><td>${fmtMetric(cfg.metric, p.y, cur)}</td></tr>`; }).join('') + '</tbody></table>';
+  }
+  const dates = [...new Set(series.flatMap(s => s.data.map(p => p.d)))].sort().reverse();
+  const maps = series.map(s => new Map(s.data.map(p => [p.d, p.y])));
+  return `<table><thead><tr><th>날짜</th>${series.map(s => `<th>${esc(s.item.name)}</th>`).join('')}</tr></thead><tbody>` +
+    dates.map(d => `<tr><td>${d}</td>${maps.map(m => `<td>${m.has(d) ? fmtMetric(cfg.metric, m.get(d), cur) : '–'}</td>`).join('')}</tr>`).join('') + '</tbody></table>';
+}
+
+/* ============================================================
+   화면 렌더
+============================================================ */
+function destroyCharts() { Object.values(charts).forEach(c => c.destroy()); charts = {}; }
+
+function renderAll() {
+  destroyCharts();
+  $$('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === db.tab));
+  $('#panel').setAttribute('aria-labelledby', 'tab-' + db.tab);
+  const T = db[db.tab], tab = tabOf();
+  let html = '';
+
+  if (!T.items.length) {
+    html += `<div class="card empty"><p>아직 등록한 ${tab.word}이 없어요.<br>${tab.word}을 추가하고 값을 기록하면 차트와 손익이 자동으로 만들어져요.</p>
+      <div class="btns"><button class="btn primary" data-act="add-item">+ ${tab.word} 추가</button>
+      <button class="btn" data-act="sample">샘플 데이터로 먼저 둘러보기</button></div></div>`;
+  } else {
+    html += kpiHTML(db.tab);
+    html += `<div class="sec-head"><h2>내 차트</h2><div class="btns"><button class="btn primary" data-act="add-chart">+ 차트 추가</button></div></div>`;
+    if (!T.charts.length) {
+      html += `<div class="card empty"><p>원하는 값과 ${tab.word}을 골라 차트를 만들어 보세요.</p><div class="btns"><button class="btn primary" data-act="add-chart">+ 차트 추가</button></div></div>`;
+    } else {
+      html += '<div class="charts">' + T.charts.map(c => chartCardHTML(c)).join('') + '</div>';
+    }
+    html += `<div class="sec-head"><h2>트래킹 ${tab.word}</h2><div class="btns">
+      ${T.items.some(i => i.sample) ? '<button class="btn" data-act="clear-sample">샘플 지우기</button>' : ''}
+      <button class="btn primary" data-act="add-item">+ ${tab.word} 추가</button></div></div>`;
+    html += itemsTableHTML(db.tab);
+  }
+  $('#panel').innerHTML = html;
+
+  T.charts.forEach(cfg => {
+    const card = $(`.chart[data-id="${cfg.id}"]`);
+    if (!card) return;
+    const series = computeSeries(db.tab, cfg);
+    const cur = curOf(series);
+    const msgEl = $('.msg', card);
+    if (!cfg.items.length) { showMsg(card, `표시할 ${tab.word}이 없어요. 편집에서 골라 주세요.`); return; }
+    if (!series.length) { showMsg(card, '이 기간에는 기록이 없어요.'); return; }
+    if (AMOUNT_METRICS.includes(cfg.metric) && !cur) { showMsg(card, '통화가 섞여 있어요. 수익률이나 지수화로 바꾸거나 같은 통화끼리 묶어 주세요.'); return; }
+    $('.legend', card).innerHTML = legendHTML(series, cfg, cur);
+    $('.tblwrap', card).innerHTML = tableHTML(series, cfg, cur);
+    $('.tblwrap', card).hidden = !tableOpen.has(cfg.id);
+    $('[data-act="chart-table"]', card).setAttribute('aria-pressed', tableOpen.has(cfg.id));
+    const chart = drawChart(db.tab, cfg, card, series);
+    canvasLabel(card, cfg, series, cur);
+    card.$series = series;
+  });
+}
+function showMsg(card, text) {
+  const plot = $('.plot', card);
+  plot.className = 'msg'; plot.style.height = ''; plot.innerHTML = esc(text);
+  $('.legend', card).innerHTML = '';
+  $('[data-act="chart-table"]', card).hidden = true;
+}
+function canvasLabel(card, cfg, series, cur) {
+  const parts = series.map(s => `${s.item.name} ${fmtMetric(cfg.metric, s.data[s.data.length - 1].y, cur)}`);
+  $('canvas', card).setAttribute('role', 'img');
+  $('canvas', card).setAttribute('aria-label', `${chartTitle(cfg)}. 최신 값: ${parts.join(', ')}`);
+}
+function chartTitle(cfg) {
+  if (cfg.title) return cfg.title;
+  return `${metricLabel(db.tab, cfg.metric)} ${cfg.type === 'bar' ? '비교' : '추이'}`;
+}
+function chartCardHTML(cfg) {
+  const n = cfg.items.filter(id => db[db.tab].items.some(i => i.id === id)).length;
+  const sub = `${metricLabel(db.tab, cfg.metric)} · ${cfg.type === 'bar' ? '기간 내 최신값' : RANGE_LABEL[cfg.range]} · ${n}개`;
+  const chips = cfg.type === 'bar'
+    ? `<div class="chips" role="group" aria-label="기간">${Object.keys(RANGES).map(r => `<button class="chip" data-act="range" data-r="${r}" aria-pressed="${cfg.range === r}">${r === 'ALL' ? '전체' : r.replace('M', '개월').replace('Y', '년')}</button>`).join('')}</div>`
+    : `<div class="chips" role="group" aria-label="기간">${Object.keys(RANGES).map(r => `<button class="chip" data-act="range" data-r="${r}" aria-pressed="${cfg.range === r}">${r === 'ALL' ? '전체' : r.replace('M', '개월').replace('Y', '년')}</button>`).join('')}</div>`;
+  return `<article class="card chart" data-id="${cfg.id}">
+    <header><div><h3>${esc(chartTitle(cfg))}</h3><div class="sub">${esc(sub)}</div></div>
+      <div class="tools"><button class="btn sm" data-act="chart-table" aria-pressed="false">표</button>
+      <button class="btn sm" data-act="chart-edit">편집</button><button class="btn sm danger" data-act="chart-del">삭제</button></div></header>
+    ${chips}<div class="legend"></div>
+    <div class="plot"><canvas></canvas><div class="tip" hidden></div></div>
+    <div class="tblwrap" hidden></div></article>`;
+}
+function kpiHTML(tab) {
+  const groups = kpiGroups(tab);
+  if (!groups.length) return `<div class="card empty"><p>아직 값이 기록되지 않았어요. 아래 목록에서 「기록」을 눌러 현재 값을 입력하세요.</p></div>` + '';
+  const word = tab === 'stock' ? '평가금액' : '총 시세';
+  const profitWord = tab === 'stock' ? '평가손익' : '평가차익';
+  return groups.map(g => {
+    const profit = g.value - g.cost, ret = g.cost > 0 ? profit / g.cost * 100 : null;
+    const gl = g.cur === 'USD' ? '달러 자산 (USD)' : (tab === 'stock' ? '원화 자산 (KRW)' : '');
+    const pc = profit > 0 ? 'up' : profit < 0 ? 'down' : 'flat';
+    return `<div class="kpi-group">${gl ? `<div class="gl">${gl}</div>` : ''}
+    <div class="kpis">
+      <div class="card kpi hero"><div class="l">${word}</div><div class="v">${fmtMoney(g.value, g.cur)}</div>
+        <div class="s">${g.hasPrev ? '직전 기록 대비 ' + amountDeltaHTML(g.dPrev, g.cur) + ' · ' : ''}기준 ${g.date} · ${g.n}개</div></div>
+      <div class="card kpi"><div class="l">${profitWord}</div><div class="v md ${pc}">${profit > 0 ? '▲ ' : profit < 0 ? '▼ ' : ''}${fmtMoney(Math.abs(profit), g.cur)}</div><div class="s">투자원금 ${fmtMoney(g.cost, g.cur)}</div></div>
+      <div class="card kpi"><div class="l">수익률</div><div class="v md ${pc}">${ret == null ? '–' : (profit > 0 ? '▲ ' : profit < 0 ? '▼ ' : '') + Math.abs(ret).toFixed(2) + '%'}</div><div class="s">매입 대비</div></div>
+    </div></div>`;
+  }).join('');
+}
+function itemsTableHTML(tab) {
+  const T = db[tab], isStock = tab === 'stock';
+  const rows = T.items.map(it => {
+    const last = it.pts[it.pts.length - 1], prev = it.pts[it.pts.length - 2];
+    const sw = `<i style="background:var(--s${it.slot + 1})"></i>`;
+    const nm = `<span class="nm">${sw}<span>${esc(it.name)}${it.sample ? '<span class="tag">샘플</span>' : ''}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span></span>`;
+    const price = last ? fmtMoney(last.v, it.cur) : '–';
+    const val = last ? fmtMoney(last.v * it.qty, it.cur) : '–';
+    const dp = last && prev ? deltaHTML((last.v / prev.v - 1) * 100) : '<span class="flat">–</span>';
+    const dr = last && it.avg > 0 ? deltaHTML((last.v / it.avg - 1) * 100) : '<span class="flat">–</span>';
+    const tg = it.target && last ? `${Math.round(last.v / it.target * 100)}%` : '–';
+    const rec = last ? `${it.pts.length}건 · ${last.d}` : '기록 없음';
+    return `<tr data-id="${it.id}"><td>${nm}</td>${isStock ? `<td>${price}</td>` : ''}<td>${val}</td><td>${dp}</td><td>${dr}</td><td>${tg}</td><td>${rec}</td>
+      <td class="act"><button class="btn sm primary" data-act="rec">기록</button><button class="btn sm" data-act="edit-item">편집</button><button class="btn sm danger" data-act="del-item">삭제</button></td></tr>`;
+  }).join('');
+  return `<div class="card scroll"><table><thead><tr><th>${tabOf().word}</th>${isStock ? '<th>현재가</th>' : ''}<th>${isStock ? '평가금액' : '시세'}</th><th>직전 대비</th><th>매입 대비</th><th>목표 달성</th><th>기록</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+/* ============================================================
+   이벤트 (패널)
+============================================================ */
+$('#panel').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act, T = db[db.tab];
+  const card = b.closest('.chart'), row = b.closest('tr[data-id]');
+  switch (act) {
+    case 'add-item': openItem(null); break;
+    case 'edit-item': openItem(row.dataset.id); break;
+    case 'del-item': {
+      const it = T.items.find(i => i.id === row.dataset.id);
+      if (!it || !confirm(`「${it.name}」과(와) 모든 기록을 삭제할까요?`)) break;
+      T.items = T.items.filter(i => i.id !== it.id);
+      T.charts.forEach(c => c.items = c.items.filter(id => id !== it.id));
+      save(); renderAll(); break;
+    }
+    case 'rec': openRec(row.dataset.id); break;
+    case 'add-chart': openChart(null); break;
+    case 'chart-edit': openChart(card.dataset.id); break;
+    case 'chart-del': {
+      const c = T.charts.find(x => x.id === card.dataset.id);
+      if (!c || !confirm(`「${chartTitle(c)}」 차트를 삭제할까요?`)) break;
+      T.charts = T.charts.filter(x => x.id !== c.id); save(); renderAll(); break;
+    }
+    case 'range': {
+      const c = T.charts.find(x => x.id === card.dataset.id);
+      c.range = b.dataset.r; save(); renderAll(); break;
+    }
+    case 'chart-table': {
+      const id = card.dataset.id;
+      tableOpen.has(id) ? tableOpen.delete(id) : tableOpen.add(id);
+      $('.tblwrap', card).hidden = !tableOpen.has(id);
+      b.setAttribute('aria-pressed', tableOpen.has(id)); break;
+    }
+    case 'legend': {
+      const chart = charts[card.dataset.id], i = +b.dataset.i;
+      if (!chart) break;
+      chart.setDatasetVisibility(i, !chart.isDatasetVisible(i));
+      chart.$hover = null; chart.$tip.hidden = true;
+      b.classList.toggle('off', !chart.isDatasetVisible(i));
+      b.setAttribute('aria-pressed', chart.isDatasetVisible(i));
+      chart.update(); break;
+    }
+    case 'sample': loadSample(db.tab); break;
+    case 'clear-sample': clearSample(db.tab); break;
+  }
+});
+$$('.tab').forEach(b => b.addEventListener('click', () => { db.tab = b.dataset.tab; save(); renderAll(); }));
+$('.tabs').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  db.tab = db.tab === 'stock' ? 're' : 'stock'; save(); renderAll(); $('#tab-' + db.tab).focus();
+});
+$$('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+
+/* ============================================================
+   종목/매물 다이얼로그
+============================================================ */
+let editCtx = null;
+function openItem(id) {
+  const tab = db.tab, T = db[tab], f = $('#fItem'), isStock = tab === 'stock';
+  const it = id ? T.items.find(i => i.id === id) : null;
+  editCtx = { id };
+  $('#itemTitle').textContent = `${tabOf().word} ${it ? '편집' : '추가'}`;
+  $('#lblName').textContent = isStock ? '종목명' : '매물 이름 (예: 마포 래미안 84㎡)';
+  $('#lblSub').textContent = isStock ? '티커 / 메모 (선택)' : '지역 · 면적 메모 (선택)';
+  $('#lblAvg').textContent = isStock ? '평균 매수가 (1주당)' : '매입가 (만원)';
+  $('#lblTarget').textContent = isStock ? '목표가 (선택)' : '목표가 (만원, 선택)';
+  $('#lblInit').textContent = isStock ? '현재가 (선택)' : '현재 시세 (만원, 선택)';
+  $('#unitHint').textContent = isStock ? '가격은 선택한 통화 기준으로 입력하세요. 원화는 원 단위, 달러는 USD 단위예요.' : '금액은 만원 단위로 입력하세요. 예: 10억 5천만원 → 105000';
+  $$('[data-only]', f).forEach(el => el.hidden = el.dataset.only !== tab);
+  $('#initRow').hidden = !!it;
+  f.reset();
+  f.name.value = it ? it.name : ''; f.sub.value = it ? it.sub : '';
+  f.cur.value = it ? it.cur : 'KRW'; f.qty.value = it ? it.qty : 1;
+  f.avg.value = it ? it.avg : ''; f.target.value = it && it.target ? it.target : '';
+  f.initd.value = todayStr();
+  $('#dlgItem').showModal();
+}
+$('#fItem').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, tab = db.tab, T = db[tab];
+  const name = f.name.value.trim(); if (!name) return;
+  const data = {
+    name, sub: f.sub.value.trim(), cur: tab === 're' ? 'KRWM' : f.cur.value,
+    qty: tab === 're' ? 1 : (+f.qty.value > 0 ? +f.qty.value : 1), avg: +f.avg.value || 0,
+    target: +f.target.value > 0 ? +f.target.value : null
+  };
+  if (editCtx.id) Object.assign(T.items.find(i => i.id === editCtx.id), data);
+  else {
+    const used = new Set(T.items.map(i => i.slot));
+    let slot = [0, 1, 2, 3, 4, 5, 6, 7].find(s => !used.has(s));
+    if (slot === undefined) slot = T.items.length % 8;
+    const it = { id: uid(), slot, sample: false, pts: [], ...data };
+    if (f.initv.value !== '' && f.initd.value) it.pts.push({ d: f.initd.value, v: +f.initv.value });
+    T.items.push(it);
+  }
+  save(); $('#dlgItem').close(); renderAll();
+});
+
+/* ============================================================
+   기록 다이얼로그
+============================================================ */
+let recId = null;
+function currentItem() { return db[db.tab].items.find(i => i.id === recId); }
+function openRec(id) {
+  recId = id;
+  const it = currentItem(), f = $('#fRec');
+  $('#recTitle').textContent = `${it.name} · 기록`;
+  $('#lblRecV').textContent = db.tab === 'stock' ? `현재가 (${it.cur === 'USD' ? 'USD' : '원'})` : '시세 (만원)';
+  f.reset(); f.d.value = todayStr(); $('#bulk').value = '';
+  const last = it.pts[it.pts.length - 1]; if (last) f.v.value = last.v;
+  renderRecList();
+  $('#dlgRec').showModal();
+}
+function renderRecList() {
+  const it = currentItem();
+  $('#recList').innerHTML = it.pts.length ? [...it.pts].reverse().map(p =>
+    `<div class="r"><span>${p.d}</span><span>${fmtMoney(p.v, it.cur)}</span><button type="button" class="x" data-d="${p.d}" aria-label="${p.d} 기록 삭제">✕</button></div>`).join('')
+    : '<div class="r"><span class="hint">아직 기록이 없어요</span></div>';
+}
+function upsertPoint(it, d, v) {
+  const p = it.pts.find(x => x.d === d);
+  if (p) p.v = v; else it.pts.push({ d, v });
+  it.pts.sort((a, b) => a.d < b.d ? -1 : 1);
+}
+$('#fRec').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, it = currentItem();
+  if (!f.d.value || f.v.value === '') return;
+  upsertPoint(it, f.d.value, +f.v.value);
+  save(); renderRecList(); renderAll();
+});
+$('#btnBulk').addEventListener('click', () => {
+  const it = currentItem(); let ok = 0, bad = 0;
+  $('#bulk').value.split(/\r?\n/).forEach(line => {
+    line = line.trim(); if (!line) return;
+    // 날짜 뒤 첫 구분자만 기준으로 나눠서 값의 천 단위 쉼표(50,000)는 보존
+    const m = line.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})\s*[,\t;\s]\s*(.+)$/);
+    const v = m ? Number(m[4].replace(/[,\s원$]/g, '')) : NaN;
+    const dm = m;
+    if (!dm || !isFinite(v)) { bad++; return; }
+    upsertPoint(it, `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}`, v); ok++;
+  });
+  if (ok) { save(); renderRecList(); renderAll(); $('#bulk').value = ''; }
+  toast(`${ok}건 추가${bad ? `, ${bad}줄은 형식이 달라 건너뛰었어요` : ''}`);
+});
+$('#recList').addEventListener('click', e => {
+  const b = e.target.closest('.x'); if (!b) return;
+  const it = currentItem(); it.pts = it.pts.filter(p => p.d !== b.dataset.d);
+  save(); renderRecList(); renderAll();
+});
+
+/* ============================================================
+   차트 만들기 다이얼로그
+============================================================ */
+let chartCtx = null;
+function openChart(id) {
+  const tab = db.tab, T = db[tab], f = $('#fChart');
+  const cfg = id ? T.charts.find(c => c.id === id) : null;
+  chartCtx = { id, items: new Set(cfg ? cfg.items : T.items.slice(0, 4).map(i => i.id)) };
+  $('#chartDlgTitle').textContent = cfg ? '차트 편집' : '차트 추가';
+  f.title.value = cfg ? cfg.title : '';
+  f.type.value = cfg ? cfg.type : 'line';
+  fillMetrics(cfg ? cfg.metric : (tab === 'stock' ? 'ret' : 'value'));
+  f.range.value = cfg ? cfg.range : '6M';
+  renderPicks();
+  $('#dlgChart').showModal();
+}
+function fillMetrics(sel) {
+  const f = $('#fChart'), tab = db.tab, type = f.type.value;
+  const allowed = (type === 'bar' ? BAR_METRICS : LINE_METRICS).filter(m => TABS[tab].metrics.includes(m));
+  const keep = allowed.includes(sel) ? sel : (allowed.includes(f.metric.value) ? f.metric.value : 'ret');
+  f.metric.innerHTML = allowed.map(m => `<option value="${m}">${esc(metricLabel(tab, m))}</option>`).join('');
+  f.metric.value = keep;
+}
+function renderPicks() {
+  const T = db[db.tab], sel = chartCtx.items;
+  const usedSlots = new Set(T.items.filter(i => sel.has(i.id)).map(i => i.slot));
+  $('#picks').innerHTML = T.items.map(it => {
+    const dis = !sel.has(it.id) && usedSlots.has(it.slot);
+    return `<label class="pick${dis ? ' dis' : ''}"><input type="checkbox" value="${it.id}" ${sel.has(it.id) ? 'checked' : ''} ${dis ? 'disabled' : ''}><i style="background:var(--s${it.slot + 1})"></i>${esc(it.name)}${it.cur === 'USD' ? ' <span class="hint">USD</span>' : ''}</label>`;
+  }).join('');
+  checkWarn();
+}
+function checkWarn() {
+  const T = db[db.tab], f = $('#fChart'), w = $('#chartWarn');
+  const curs = new Set(T.items.filter(i => chartCtx.items.has(i.id)).map(i => i.cur));
+  const bad = AMOUNT_METRICS.includes(f.metric.value) && curs.size > 1;
+  w.hidden = !bad;
+  w.textContent = bad ? '원화와 달러가 섞여 있어서 금액으로는 비교할 수 없어요. 수익률·지수화·등락률을 고르거나 한 통화만 선택하세요.' : '';
+}
+$('#picks').addEventListener('change', e => {
+  if (e.target.type !== 'checkbox') return;
+  e.target.checked ? chartCtx.items.add(e.target.value) : chartCtx.items.delete(e.target.value);
+  renderPicks();
+});
+$('#fChart').addEventListener('change', e => {
+  if (e.target.name === 'type') fillMetrics();
+  if (e.target.name === 'type' || e.target.name === 'metric') checkWarn();
+});
+$('#fChart').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, T = db[db.tab];
+  const order = T.items.map(i => i.id).filter(id => chartCtx.items.has(id));
+  if (!order.length) { toast(`${tabOf().word}을 하나 이상 골라 주세요.`); return; }
+  const data = { title: f.title.value.trim(), type: f.type.value, metric: f.metric.value, range: f.range.value, items: order };
+  if (chartCtx.id) Object.assign(T.charts.find(c => c.id === chartCtx.id), data);
+  else T.charts.push({ id: uid(), ...data });
+  save(); $('#dlgChart').close(); renderAll();
+});
+
+/* ============================================================
+   샘플 데이터
+============================================================ */
+function mulberry(a) {
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function dateStr(t) { const x = new Date(t); return `${x.getUTCFullYear()}-${pad2(x.getUTCMonth() + 1)}-${pad2(x.getUTCDate())}`; }
+function sampleBizDates(n) {
+  const out = [], now = ts(todayStr());
+  for (let t = now; out.length < n; t -= DAY) { const wd = new Date(t).getUTCDay(); if (wd !== 0 && wd !== 6) out.unshift(dateStr(t)); }
+  return out;
+}
+function sampleMonthDates(n) {
+  const out = [], t = new Date(); let y = t.getFullYear(), m = t.getMonth();
+  for (let i = 0; i < n; i++) { out.unshift(`${y}-${pad2(m + 1)}-01`); m--; if (m < 0) { m = 11; y--; } }
+  return out;
+}
+function walk(rand, dates, start, vol, drift, round) {
+  let v = start;
+  return dates.map(d => { v *= 1 + drift + (rand() - .5) * 2 * vol; return { d, v: round ? Math.round(v / round) * round : Math.round(v * 100) / 100 }; });
+}
+function loadSample(tab) {
+  const T = db[tab];
+  if (tab === 'stock') {
+    const dates = sampleBizDates(130), defs = [
+      ['삼성전자', '005930', 'KRW', 30, 68000, 69500, .012, .0004, 100],
+      ['SK하이닉스', '000660', 'KRW', 8, 190000, 182000, .02, .001, 500],
+      ['NVIDIA', 'NVDA', 'USD', 5, 120, 118, .025, .0015],
+      ['Apple', 'AAPL', 'USD', 10, 190, 192, .014, .0004]
+    ];
+    defs.forEach((d, k) => {
+      const rand = mulberry(11 + k * 7);
+      T.items.push({ id: uid(), name: d[0] + ' (샘플)', sub: d[1], cur: d[2], qty: d[3], avg: d[4], target: Math.round(d[4] * 1.4), slot: T.items.length % 8, sample: true, pts: walk(rand, dates, d[5], d[6], d[7], d[8]) });
+    });
+    const ids = T.items.filter(i => i.sample).map(i => i.id);
+    T.charts.push({ id: uid(), title: '수익률 추이', type: 'line', metric: 'ret', range: '6M', items: ids });
+    T.charts.push({ id: uid(), title: '지금 수익률 비교', type: 'bar', metric: 'ret', range: '6M', items: ids });
+  } else {
+    const dates = sampleMonthDates(20), defs = [
+      ['마포 래미안 84㎡', '서울 마포 · 84㎡', 105000, 102000, .006, .004],
+      ['분당 오피스텔', '성남 분당 · 33㎡', 42000, 43000, .004, .0005],
+      ['수원 빌라', '수원 · 59㎡', 28000, 27500, .005, .001]
+    ];
+    defs.forEach((d, k) => {
+      const rand = mulberry(31 + k * 5);
+      T.items.push({ id: uid(), name: d[0] + ' (샘플)', sub: d[1], cur: 'KRWM', qty: 1, avg: d[2], target: Math.round(d[2] * 1.25), slot: T.items.length % 8, sample: true, pts: walk(rand, dates, d[3], d[4], d[5], 100) });
+    });
+    const ids = T.items.filter(i => i.sample).map(i => i.id);
+    T.charts.push({ id: uid(), title: '시세 추이', type: 'line', metric: 'value', range: 'ALL', items: ids });
+    T.charts.push({ id: uid(), title: '평가차익 비교', type: 'bar', metric: 'profit', range: 'ALL', items: ids });
+  }
+  save(); renderAll();
+}
+function clearSample(tab) {
+  if (!confirm('샘플 항목과 샘플 차트를 모두 지울까요? (직접 입력한 항목은 그대로예요)')) return;
+  const T = db[tab], ids = new Set(T.items.filter(i => i.sample).map(i => i.id));
+  T.items = T.items.filter(i => !ids.has(i.id));
+  T.charts.forEach(c => c.items = c.items.filter(id => !ids.has(id)));
+  T.charts = T.charts.filter(c => c.items.length);
+  save(); renderAll();
+}
+
+/* ============================================================
+   내보내기 / 가져오기 / 테마
+============================================================ */
+$('#btnExport').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `invest-${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+$('#btnImport').addEventListener('click', () => $('#fileImport').click());
+$('#fileImport').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const o = JSON.parse(await file.text());
+    if (!o || o.v !== 1 || !o.stock || !o.re) throw new Error('형식');
+    if (!confirm('지금 저장된 데이터를 가져온 파일로 바꿀까요?')) return;
+    db = normalize(o); save(); renderAll();
+  } catch (err) { toast('올바른 백업 파일이 아니에요.'); }
+});
+function applyTheme(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+}
+(function () { try { applyTheme(localStorage.getItem(THEME_KEY)); } catch (e) { } })();
+$('#btnTheme').addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark' ||
+    (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+  const next = dark ? 'light' : 'dark';
+  applyTheme(next);
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) { }
+  renderAll();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderAll());
+
+renderAll();
+</script>
+</body>
+</html>
