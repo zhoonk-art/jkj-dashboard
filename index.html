@@ -915,6 +915,9 @@
         .oil-now-reco { background: #fdecec; color: #c92a2a; }
         .oil-btn { width: 100%; margin-top: 10px; padding: 9px; font-size: 13px; font-weight: 700; color: #fff;
             background: #8a4a1f; border: none; border-radius: 8px; cursor: pointer; }
+        .oil-rec { display: flex; gap: 6px; align-items: stretch; margin-top: 10px; }
+        .oil-rec input[type=date] { flex: 0 0 auto; padding: 6px 8px; font-size: 13px; border: 1px solid #e6ddd6; border-radius: 8px; color: #501100; }
+        .oil-rec .oil-btn { margin-top: 0; flex: 1 1 auto; }
 
 
         .fee-table tr.menu-sec td {
@@ -2682,18 +2685,42 @@
                         <td class="ord-kg">${P0(avgPct)}</td></tr>
                 </table>
                 <div class="ord-note">사용률 = 시간 ${UM.hours_ref}h · 마리 ${UM.birds_ref}마리(새우 6p=0.5·12p=1·24p=2 환산)를 기준으로 반반 — 둘 다 채우면 100% (평일 ${UM.weekday_hours}h · 주말 ${UM.weekend_hours}h 영업 기준) · 기록 ${cycles.length}회 쌓임 — 기준값은 기록이 더 쌓이면 다시 정함</div>
-                ${IS_LOCAL ? `<button class="oil-btn" onclick="saveOilChange()">오늘 마감 후 폐유함</button>`
+                ${IS_LOCAL ? `<div class="oil-rec">
+                    <input type="date" id="oilDate" value="${today}" max="${today}" onchange="oilDateChanged()">
+                    <button class="oil-btn" id="oilBtn" onclick="saveOilChange()">마감 후 폐유함</button>
+                </div>
+                <div class="ord-note">버튼을 놓쳤으면 날짜를 그날로 바꿔서 누르세요. 이미 기록된 날짜를 고르면 기록을 취소할 수 있습니다.</div>`
                             : `<div class="ord-note">폐유 기록은 매장 PC의 버튼으로 하거나 Claude에게 알려주세요 (휴대폰 화면은 읽기 전용)</div>`}`;
+            if (IS_LOCAL) oilDateChanged();
         }
 
-        // 매장 PC에서만: 오늘 날짜를 폐유 기록에 추가
+        // 매장 PC에서만: 고른 날짜(기본 오늘)를 폐유 기록에 추가 — 버튼을 놓친 지난 날짜도 기록할 수 있다.
+        // 이미 기록된 날짜를 고르면 그 기록을 취소한다(잘못 누른 경우).
+        function oilDateChanged() {
+            const inp = document.getElementById('oilDate'), btn = document.getElementById('oilBtn');
+            if (!inp || !btn) return;
+            const ds = inp.value, today = todayStr();
+            const done = !!(_oilLedger && (_oilLedger.waste_dates || []).indexOf(ds) >= 0);
+            const md = ds ? (+ds.slice(5, 7)) + '/' + (+ds.slice(8)) : '';
+            btn.textContent = done ? `${md} 폐유 기록 취소` : (ds === today ? '오늘 마감 후 폐유함' : `${md} 마감 후 폐유함`);
+            btn.style.background = done ? '#868e96' : '';
+        }
         async function saveOilChange() {
-            const today = todayStr();
             if (!_oilLedger) return;
-            const wd = (_oilLedger.waste_dates || []).slice();
-            if (wd.indexOf(today) >= 0) { alert('오늘은 이미 폐유로 기록돼 있습니다.'); return; }
-            if (!confirm('오늘 마감 후 폐유한 것으로 기록할까요?')) return;
-            wd.push(today); wd.sort();
+            const today = todayStr();
+            const inp = document.getElementById('oilDate');
+            const ds = (inp && inp.value) || today;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) { alert('날짜를 골라 주세요.'); return; }
+            if (ds > today) { alert('앞으로의 날짜는 기록할 수 없습니다.'); return; }
+            const md = (+ds.slice(5, 7)) + '/' + (+ds.slice(8));
+            let wd = (_oilLedger.waste_dates || []).slice();
+            if (wd.indexOf(ds) >= 0) {
+                if (!confirm(`${md} 폐유 기록을 취소할까요?`)) return;
+                wd = wd.filter(d => d !== ds);
+            } else {
+                if (!confirm(`${ds === today ? '오늘' : md} 마감 후 폐유한 것으로 기록할까요?`)) return;
+                wd.push(ds); wd.sort();
+            }
             const payload = Object.assign({}, _oilLedger, { waste_dates: wd });
             try {
                 const resp = await fetch('./api/save-oil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
