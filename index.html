@@ -1329,7 +1329,7 @@
 
             <div class="orders-section" style="margin-bottom: 12px;">
                 <h2>🧾 월 운영비 설정</h2>
-                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×이번 달 실제 근무 요일 수로 자동 계산됩니다 (중도 입사는 시작일부터).</p>
+                <p class="settings-note">금액을 수정하고 저장하세요. 인건비는 시급×시간×이번 달 실제 근무 요일 수로 자동 계산되고, 사대보험(사업주 부담분)·퇴직금 적립분이 더해집니다 (중도 입사는 시작일부터).</p>
                 <div id="costSettings"></div>
                 <button class="save-btn" onclick="addCostItem()" style="background:#8a4a1f; margin-right:6px;">+ 항목 추가</button>
                 <button class="save-btn" onclick="saveCosts()">운영비 저장</button>
@@ -3856,6 +3856,14 @@
         // 해당 월(기본 이번 달)의 실제 요일 수로 인건비 계산. l.start/l.end(YYYY-MM-DD)가 있으면 그 기간만.
         // weekdays 미지정 항목은 예전 방식(주당 일수 × 4.345주) 폴백.
         // upto(YYYY-MM-DD)를 주면 그 날짜까지만 센다 — 진행 중인 달의 인건비를 하루하루 쌓아 계산하기 위함.
+        // 사대보험(사업주 부담분)·퇴직금 적립 — costs.json labor_overhead.items의 rate 합계 (사장님 지시 2026-10-24).
+        // 시급×시간에 (1 + 이 비율)을 곱해 실제로 나가는 인건비로 본다. 설정이 없으면 0 (예전처럼 시급×시간만).
+        function laborOverheadRate() {
+            const o = costsConfig && costsConfig.labor_overhead;
+            if (!o || !Array.isArray(o.items)) return 0;
+            return o.items.reduce((s, x) => s + (+x.rate || 0), 0);
+        }
+
         function laborMonthly(l, ym, upto) {
             ym = ym || todayStr().substring(0, 7);
             const y = +ym.substring(0, 4), m = +ym.substring(5, 7);
@@ -3863,14 +3871,14 @@
             const endDay = (upto && upto.substring(0, 7) === ym)
                 ? Math.min(+upto.substring(8, 10), lastDay) : lastDay;
             if (!Array.isArray(l.weekdays) || !l.weekdays.length) {
-                const full = Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345);
+                const full = Math.round((l.hourly || 0) * (l.hours || 0) * (l.days || 0) * 4.345 * (1 + laborOverheadRate()));
                 return Math.round(full * endDay / lastDay);
             }
             let cnt = 0;
             for (let d = 1; d <= endDay; d++) {
                 if (worksOn(l, ym + '-' + String(d).padStart(2, '0'))) cnt++;
             }
-            return Math.round((l.hourly || 0) * (l.hours || 0) * cnt);
+            return Math.round((l.hourly || 0) * (l.hours || 0) * cnt * (1 + laborOverheadRate()));
         }
 
         // 그 달 1일부터 upto까지 지난 영업일 수 (월요일 휴무 기준)
@@ -3887,7 +3895,7 @@
         // 특정 날짜(dateStr, YYYY-MM-DD)에 실제로 근무하는 인건비만 합산 (weekdays 미지정 시 항상 포함)
         function laborForDate(dateStr) {
             return (costsConfig.labor || []).reduce((s, l) =>
-                worksOn(l, dateStr) ? s + Math.round((l.hourly || 0) * (l.hours || 0)) : s, 0);
+                worksOn(l, dateStr) ? s + Math.round((l.hourly || 0) * (l.hours || 0) * (1 + laborOverheadRate())) : s, 0);
         }
 
         // 배민 광고 로그(사장님이 주기적으로 전달하는 실비)에서 해당 월 지출 합계를 뽑는다.
@@ -4127,6 +4135,10 @@
                 if (ended) endedHtml += row; else activeHtml += row;
             });
             html += activeHtml;
+            const ovItems = (costsConfig.labor_overhead && costsConfig.labor_overhead.items) || [];
+            if (ovItems.length) {
+                html += `<div class="settings-note" style="margin:4px 0 8px;">인건비 월 금액(≈)에는 ${ovItems.map(x => x.name + ' ' + (x.rate * 100).toFixed(2) + '%').join(' · ')} = 시급의 <b>${(laborOverheadRate() * 100).toFixed(1)}%</b>가 더해져 있습니다.</div>`;
+            }
             if (endedHtml) {
                 const n = (costsConfig.labor || []).filter(isEnded).length;
                 html += `<details class="labor-ended-fold">
