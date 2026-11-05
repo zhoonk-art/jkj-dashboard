@@ -2364,7 +2364,7 @@
                 laborTotal ? { name: '인건비', amt: laborTotal,
                     parts: [laborWk ? part('평일', laborWk) : null, laborWknd ? part('주말', laborWknd) : null].filter(Boolean) } : null,
                 (adTotal + extAdSum) ? { name: '광고비', amt: adTotal + extAdSum,
-                    parts: [mn.advBm ? part('배민', mn.advBm) : null, mn.advSale ? part('배민 타임세일', mn.advSale) : null,
+                    parts: [mn.advBm ? part('배민', mn.advBm) : null, ...Object.keys(mn.advSaleBy || {}).map(k => part(k, mn.advSaleBy[k])),
                         mn.advCp ? part('쿠팡 예상', mn.advCp) : null]
                         .concat(Object.keys(extAd).map(k => part(k, extAd[k]))).filter(Boolean) } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
@@ -2414,6 +2414,7 @@
             if (!act.length) { box.innerHTML = ''; return; }
 
             let gross = 0, fee = 0, mat = 0, adBm = 0, adCp = 0, adSale = 0;
+            const adSaleBy = {};   // 가게 부담 할인 이름별 (배민 할인쿠폰·쿠팡 할인쿠폰 등)
             const feePlat = {};    // 플랫폼별 수수료 (광고비 제외 — 광고비는 아래 별도 행)
             act.forEach(o => {
                 const r = orderNet(o, dateStr);
@@ -2421,6 +2422,7 @@
                 fee += r.fee;
                 mat += orderCost(o, dateStr);
                 adSale += r.sale;
+                if (r.sale) adSaleBy[r.saleName] = (adSaleBy[r.saleName] || 0) + r.sale;
                 if (String(o.channel || '').indexOf('쿠팡') === 0) adCp += r.ad - r.sale; else adBm += r.ad - r.sale;
                 const pf = platformOf(o.channel);
                 feePlat[pf] = (feePlat[pf] || 0) + (r.fee - r.ad);
@@ -2460,7 +2462,7 @@
                 opsAmt ? { name: '운영비', amt: opsAmt, parts: opsRows.map(r => part(r.name, r.amt)) } : null,
                 (adTotal + extAdSum) ? {
                     name: '광고비', amt: adTotal + extAdSum,
-                    parts: [adBm ? part('배민', adBm) : null, adSale ? part('배민 타임세일', adSale) : null,
+                    parts: [adBm ? part('배민', adBm) : null, ...Object.keys(adSaleBy).map(k => part(k, adSaleBy[k])),
                         adCp ? part('쿠팡 예상', adCp) : null].concat(extAds.map(a => part(a.name, a.amt))).filter(Boolean)
                 } : null
             ].filter(r => r && r.amt > 0).sort((a, b) => b.amt - a.amt);
@@ -3318,14 +3320,22 @@
         // 주문 1건의 수수료 분해: 중개 + 결제 + 배달비 + 광고 + 부가세(합의 10%)
         // 가게가 부담하는 앱 할인(배민 타임세일·할인쿠폰, 쿠팡 할인쿠폰 등). fees.json store_discounts 에 적힌 채널·기간의 주문만 해당.
         // 할인액은 POS의 SPIDER_ORDER.DISCOUNT_AMOUNT(order.discount). 기간 밖 할인은 플랫폼이 지원한 것이라 무시한다.
-        function storeDiscountOf(order, dateStr) {
-            const d = +order.discount || 0;
+        function storeDiscountHit(order, dateStr) {
             const list = (feesConfig && feesConfig.store_discounts) || [];
-            if (!d || !list.length) return 0;
+            if (!(+order.discount) || !list.length) return null;
             const ds = dateStr || todayStr();
             const ch = String(order.channel || '');
-            const hit = list.find(s => s && ch.indexOf(s.channel_prefix || '\u0000') === 0
-                && (!s.from || ds >= s.from) && (!s.to || ds <= s.to));
+            return list.find(s => s && ch.indexOf(s.channel_prefix || '\u0000') === 0
+                && (!s.from || ds >= s.from) && (!s.to || ds <= s.to)) || null;
+        }
+        // 결산표에 찍을 할인 이름 — fees.json store_discounts 의 name 에서 괄호 설명을 뗀 것 (예: '배민 할인쿠폰')
+        function storeDiscountName(order, dateStr) {
+            const hit = storeDiscountHit(order, dateStr);
+            return hit ? String(hit.name || '가게 부담 할인').replace(/\s*\(.*\)\s*$/, '') : '';
+        }
+        function storeDiscountOf(order, dateStr) {
+            const d = +order.discount || 0;
+            const hit = storeDiscountHit(order, dateStr);
             // store_share = 가게가 실제로 부담하는 비율 (배민 타임세일은 배민이 10% 지원 → 0.9)
             // store_max = 주문당 가게 부담 상한. 쿠팡은 POS discount 에 쿠팡 부담 쿠폰이 섞여 들어와서
             //   가게 쿠폰 금액(1,000원)까지만 가게 부담으로 본다 (2026-11-05)
@@ -3349,7 +3359,8 @@
             // 광고비는 부가세까지 포함된 최종 금액으로 차감된다 (2026-09-11 정산서 실측).
             const vat = Math.round((med + pay + del) * 0.1);
             const fee = med + pay + del + ad + vat;
-            return { med: med, pay: pay, del: del, ad: ad, sale: sale, vat: vat, fee: fee, net: order.amount - fee };
+            const saleName = sale ? storeDiscountName(order, dateStr) : '';
+            return { med: med, pay: pay, del: del, ad: ad, sale: sale, saleName: saleName, vat: vat, fee: fee, net: order.amount - fee };
         }
 
         // 채널별 실수령 표 — '오늘' 탭 맨 아래. renderDay 가 이미 읽어온 주문을 그대로 쓴다.
@@ -4076,6 +4087,7 @@
             if (ym !== curYm && _monthNetCache[ym]) return _monthNetCache[ym];
             const idx = (await loadJson('./processed/archive/archive_index.json')) || [];
             let gross = 0, net = 0, mat = 0, days = 0, adv = 0, advBm = 0, advCp = 0, advSale = 0;
+            const advSaleBy = {};
             const feePlat = {};    // 플랫폼별 수수료 (광고비 제외 — 결산표에서 따로 보여준다)
             const monthDays = idx.filter(x => x.date.substring(0, 7) === ym);
 
@@ -4095,6 +4107,7 @@
                     const a = r.ad;
                     adv += a;
                     advSale += r.sale;
+                    if (r.sale) advSaleBy[r.saleName] = (advSaleBy[r.saleName] || 0) + r.sale;
                     if (o.channel.indexOf('배달의민족') === 0) advBm += a - r.sale; else advCp += a - r.sale;
                     const pf = platformOf(o.channel);
                     feePlat[pf] = (feePlat[pf] || 0) + (r.fee - a);
@@ -4107,7 +4120,7 @@
             ]);
             monthDays.forEach((d, i) => { if (dayData[i]) addDay(dayData[i].orders, d.date); });
             if (t && t.date && t.date.substring(0, 7) === ym && !monthDays.some(x => x.date === t.date)) addDay(t.orders, t.date);
-            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp, advSale: advSale, feePlat: feePlat };
+            const r = { gross: gross, net: net, mat: mat, days: days, adv: adv, advBm: advBm, advCp: advCp, advSale: advSale, advSaleBy: advSaleBy, feePlat: feePlat };
             if (ym !== curYm) _monthNetCache[ym] = r;
             return r;
         }
@@ -4417,7 +4430,7 @@
                     addTo(A.fee, pf + '|배달비', r.del); addTo(A.fee, pf + '|부가세', r.vat);
                     const adv = r.ad - r.sale;
                     if (adv) addTo(A.ad, pf === '배민' ? '배민 우리가게클릭' : pf === '쿠팡' ? '쿠팡 매출연동 광고' : '기타 매출연동 광고', adv);
-                    if (r.sale) addTo(A.ad, '배민 타임세일 (가게 부담 할인)', r.sale);
+                    if (r.sale) addTo(A.ad, r.saleName + ' (가게 부담 할인)', r.sale);
                     // 제품군별 손익용: 이 주문의 수수료+광고를 매출 비율대로 나눈다
                     Object.keys(rp).forEach(k => addTo(A.prodFee, k, r.fee * rp[k] / rpSum));
                     const cg = chanGroup(o.channel);
