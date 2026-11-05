@@ -3316,7 +3316,7 @@
         }
 
         // 주문 1건의 수수료 분해: 중개 + 결제 + 배달비 + 광고 + 부가세(합의 10%)
-        // 가게가 부담하는 앱 할인(배민 타임세일 등). fees.json store_discounts 에 적힌 채널·기간의 주문만 해당.
+        // 가게가 부담하는 앱 할인(배민 타임세일·할인쿠폰, 쿠팡 할인쿠폰 등). fees.json store_discounts 에 적힌 채널·기간의 주문만 해당.
         // 할인액은 POS의 SPIDER_ORDER.DISCOUNT_AMOUNT(order.discount). 기간 밖 할인은 플랫폼이 지원한 것이라 무시한다.
         function storeDiscountOf(order, dateStr) {
             const d = +order.discount || 0;
@@ -3327,7 +3327,12 @@
             const hit = list.find(s => s && ch.indexOf(s.channel_prefix || '\u0000') === 0
                 && (!s.from || ds >= s.from) && (!s.to || ds <= s.to));
             // store_share = 가게가 실제로 부담하는 비율 (배민 타임세일은 배민이 10% 지원 → 0.9)
-            return hit ? Math.round(d * (typeof hit.store_share === 'number' ? hit.store_share : 1)) : 0;
+            // store_max = 주문당 가게 부담 상한. 쿠팡은 POS discount 에 쿠팡 부담 쿠폰이 섞여 들어와서
+            //   가게 쿠폰 금액(1,000원)까지만 가게 부담으로 본다 (2026-11-05)
+            if (!hit) return 0;
+            let s = Math.round(d * (typeof hit.store_share === 'number' ? hit.store_share : 1));
+            if (typeof hit.store_max === 'number') s = Math.min(s, hit.store_max);
+            return s;
         }
 
         function orderNet(order, dateStr) {
