@@ -1527,6 +1527,26 @@
                 if (!ys) return;
                 const y = ys.getPixelForValue(opt.value);
                 const ctx = chart.ctx, area = chart.chartArea;
+                // opt.series(날짜별 평균 배열)가 있으면 가로선 대신 오르내리는 꺾은선으로 그림 (사장님 요청 2026-11-07)
+                if (Array.isArray(opt.series) && chart.scales.x) {
+                    const xs = chart.scales.x;
+                    ctx.save();
+                    ctx.beginPath(); ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top); ctx.clip();
+                    ctx.strokeStyle = '#e03131';
+                    ctx.lineWidth = 1.8;
+                    ctx.setLineDash([6, 4]);
+                    ctx.beginPath();
+                    let started = false;
+                    opt.series.forEach((v, i) => {
+                        if (!(v > 0)) return;
+                        const px = xs.getPixelForValue(i), py = ys.getPixelForValue(v);
+                        if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+                    });
+                    ctx.stroke();
+                    ctx.restore();
+                    if (y < area.top || y > area.bottom) return;
+                    ctx.save();
+                } else {
                 if (y < area.top || y > area.bottom) return;
                 ctx.save();
                 ctx.strokeStyle = '#e03131';
@@ -1534,6 +1554,7 @@
                 ctx.setLineDash([6, 4]);
                 ctx.beginPath(); ctx.moveTo(area.left, y); ctx.lineTo(area.right, y); ctx.stroke();
                 ctx.setLineDash([]);
+                }
                 const txt = (opt.label || '평균') + ' ' + Math.round(opt.value).toLocaleString() + '원';
                 ctx.font = 'bold 11px sans-serif';
                 const tw = ctx.measureText(txt).width;
@@ -2995,6 +3016,15 @@
             const dailyDone = daily.filter(d => d.date !== todayStr());
             const dailyCur = daily.map(d => d.date === todayStr());   // 진행 중인 막대는 옅게 표시
             const dailyAvg = dailyDone.length ? dailyDone.reduce((s, d) => s + d.total_amount - grpOf(d.date), 0) / dailyDone.length : 0;
+            // 날짜별 이동 평균 (사장님 요청 2026-11-07): 각 날짜 시점에서 그날 포함 직전 8주(56일) 영업일 평균.
+            //   오늘·단체주문 제외 규칙은 위 일 평균과 동일 → 마지막 점(오늘) 값 = 위 dailyAvg.
+            const allDone = index ? [...index].filter(d => d.date < todayStr()).sort((a, b) => a.date.localeCompare(b.date)) : [];
+            const dailyRoll = daily.map(d => {
+                const from = new Date(d.date + 'T00:00:00'); from.setDate(from.getDate() - 56);
+                const fromStr = fmtDate(from);
+                const win = allDone.filter(x => x.date >= fromStr && x.date <= d.date);
+                return win.length ? win.reduce((s, x) => s + x.total_amount - grpOf(x.date), 0) / win.length : 0;
+            });
 
             drawChart('trendChart', {
                 type: 'bar',
@@ -3020,12 +3050,15 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: dailyAvg, label: '평균' },
+                    avgLine: { value: dailyAvg, label: '평균', series: dailyRoll },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             filter: item => item.datasetIndex === 0,
-                            callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${dailyCur[ctx.dataIndex] ? ' (진행 중 · 평균 제외)' : ''}` }
+                            callbacks: {
+                                label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${dailyCur[ctx.dataIndex] ? ' (진행 중 · 평균 제외)' : ''}`,
+                                afterLabel: ctx => dailyRoll[ctx.dataIndex] > 0 ? `평균 ${Math.round(dailyRoll[ctx.dataIndex]).toLocaleString()}원` : ''
+                            }
                         }
                     },
                     scales: {
@@ -3053,6 +3086,13 @@
             })();
             const weekDone = weekKeys.filter(w => w !== curWk);
             const weeklyAvg = weekDone.length ? weekDone.reduce((s, w) => s + weekly[w] - (grpByWeek[w] || 0), 0) / weekDone.length : 0;
+            // 주별 이동 평균 (사장님 요청 2026-11-07): 각 주 시점에서 그 주 포함 직전 12주 중 끝난 주 평균 → 마지막 점 = weeklyAvg
+            const allWeekKeys = Object.keys(weekly).sort();
+            const weeklyRoll = weekKeys.map(w => {
+                const i = allWeekKeys.indexOf(w);
+                const win = allWeekKeys.slice(Math.max(0, i - 11), i + 1).filter(x => x !== curWk);
+                return win.length ? win.reduce((s, x) => s + weekly[x] - (grpByWeek[x] || 0), 0) / win.length : 0;
+            });
 
             const weekRange = i => {
                 const d = weekKeyToMonday(weekKeys[i]);
@@ -3084,10 +3124,10 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: weeklyAvg, label: '평균' },
+                    avgLine: { value: weeklyAvg, label: '평균', series: weeklyRoll },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { title: items => weekRange(items[0].dataIndex), label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${weekKeys[ctx.dataIndex] === curWk ? ' (진행 중 · 평균 제외)' : ''}` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { title: items => weekRange(items[0].dataIndex), label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${weekKeys[ctx.dataIndex] === curWk ? ' (진행 중 · 평균 제외)' : ''}`, afterLabel: ctx => weeklyRoll[ctx.dataIndex] > 0 ? `평균 ${Math.round(weeklyRoll[ctx.dataIndex]).toLocaleString()}원` : '' } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
@@ -3110,6 +3150,11 @@
             const curYm = todayStr().substring(0, 7);
             const monthDone = months.filter(m => m !== curYm);
             const monthlyAvg = monthDone.length ? monthDone.reduce((s, m) => s + monthly[m].month_total - (grpByMonth[m] || 0), 0) / monthDone.length : 0;
+            // 월별 누적 평균 (사장님 요청 2026-11-07): 각 달 시점에서 2026-03부터 그 달까지 끝난 달 평균 → 마지막 점 = monthlyAvg
+            const monthlyRoll = months.map((m, i) => {
+                const win = months.slice(0, i + 1).filter(x => x !== curYm);
+                return win.length ? win.reduce((s, x) => s + monthly[x].month_total - (grpByMonth[x] || 0), 0) / win.length : 0;
+            });
 
             // 월별 매출
             drawChart('monthlyChart', {
@@ -3136,10 +3181,10 @@
                 options: {
                     responsive: true,
                     animation: false,
-                    avgLine: { value: monthlyAvg, label: '평균' },
+                    avgLine: { value: monthlyAvg, label: '평균', series: monthlyRoll },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${months[ctx.dataIndex] === curYm ? ' (진행 중 · 평균 제외)' : ''}` } }
+                        tooltip: { filter: item => item.datasetIndex === 0, callbacks: { label: ctx => `${(ctx.parsed.y || 0).toLocaleString()}원${months[ctx.dataIndex] === curYm ? ' (진행 중 · 평균 제외)' : ''}`, afterLabel: ctx => monthlyRoll[ctx.dataIndex] > 0 ? `평균 ${Math.round(monthlyRoll[ctx.dataIndex]).toLocaleString()}원` : '' } }
                     },
                     scales: { y: { ticks: { callback: v => (v / 10000) + '만' } } }
                 }
