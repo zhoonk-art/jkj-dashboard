@@ -1602,8 +1602,8 @@
 
         // ----- 시간대별 매출: 요일 필터 -----
         // 기본은 오늘 요일 — 그날 장사 흐름을 바로 보려고 여는 거라서.
-        // 월요일은 휴무라 데이터가 거의 없으므로 전체로 둔다.
-        let hourlyDowSel = new Date().getDay() === 1 ? 'all' : new Date().getDay(); // 'all' 또는 0(일)~6(토)
+        // 그 요일 데이터가 아직 없으면(예: 2026-11-09 월요일 정상영업 시작 직후) 통계를 불러온 뒤 전체로 바꾼다.
+        let hourlyDowSel = new Date().getDay(); // 'all' 또는 0(일)~6(토)
         const HOURLY_DOW_OPTS = [['all', '전체'], [1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [0, '일']];
 
         function renderHourlyDowFilter() {
@@ -1632,10 +1632,16 @@
             for (let h = 11; h <= 23; h++) {
                 hLabels.push(h + '시');
                 if (dowSel === 'all') {
-                    // 전체 = 영업 요일(화~일) 6일 평균 건수 (월요일 휴무 제외)
-                    let sum = 0;
-                    for (let d = 0; d < 7; d++) if (d !== 1) sum += heat[d][h];
-                    hData.push(Math.round(sum / 6 * 100) / 100);
+                    // 전체 = 지금 영업하는 요일들의 평균 건수. 휴무 요일(operating_history)과 데이터가 없는 요일은 뺀다.
+                    // (2026-11-09부터 월요일 정상영업 — 월요일 데이터가 쌓이면 자동으로 7일 평균이 된다)
+                    const closedNow = closedWeekdaysOn(todayStr());
+                    let sum = 0, n = 0;
+                    for (let d = 0; d < 7; d++) {
+                        if (closedNow.indexOf(d) >= 0) continue;
+                        if (!heat[d] || !heat[d].some(v => +v > 0)) continue;
+                        sum += heat[d][h]; n++;
+                    }
+                    hData.push(n ? Math.round(sum / n * 100) / 100 : 0);
                 } else {
                     hData.push(heat[dowSel][h]);
                 }
@@ -2825,7 +2831,8 @@
                 // 발주 추천 — 밤에 주문하면 다음 날 오전에 들어와 그날부터 쓴다.
                 //   월 발주 → 화 오전 도착 → 화 사용
                 //   목 발주 → 금 오전 도착 → 금·토·일 사용 (3일치)
-                //   금·토·일은 발주하지 않고, 일요일도 월요일 휴무라 발주 없음.
+                //   일 발주 → 월 오전 도착 → 월 사용 (2026-11-09 월요일 정상영업부터, 사장님 결정 2026-11-07)
+                //   금·토는 발주하지 않는다. 월요일이 휴무 요일(operating_history)이면 일요일 발주도 없다.
                 // 도축업체가 10kg 단위로만 받으므로 10kg씩 올려 주문하고,
                 // 그때 남는 양은 다음 발주에서 빼준다(이월). 안 그러면 매번 올림이 쌓여 과잉 주문이 된다.
                 const kgOf = n => { const i = labels.indexOf(n); return i < 0 ? 0 : avg[i]; };
@@ -2836,17 +2843,21 @@
                 const roundOrder = (want, need, tight) => Math.max(0, tight ? Math.round(want / UNIT) * UNIT
                     : Math.ceil((want - need * (BUF - 1) / 2) / UNIT - 1e-9) * UNIT);
                 // day = 닭이 들어오는 날(= 쓰기 시작하는 날). 발주는 그 전날 밤에 넣는다.
-                const base = [
+                await loadCosts();
+                const monOpen = closedWeekdaysOn(todayStr()).indexOf(1) < 0;
+                // 월요일 기록이 아직 없으면(최근 8주 안) 화요일 평균으로 대신 잡는다 — 둘 다 주 초 평일이라 비슷하다고 봄.
+                const monNeed = kgOf('월') || kgOf('화');
+                const base = (monOpen ? [{ day: '월', need: monNeed, est: !kgOf('월') }] : []).concat([
                     { day: '화', need: kgOf('화') },
                     { day: '수', need: kgOf('수') },
                     { day: '목', need: kgOf('목') },
-                    // 금요일분은 타이트하게. 여기서 남긴 닭은 월요일 휴무를 건너 화요일에나 쓰게 되는데
-                    // 나흘 묵은 닭을 쓰는 셈이라, 올림 대신 가장 가까운 10kg으로 맞춰 남는 양을 줄인다.
+                    // 금요일분은 타이트하게. 여기서 남긴 닭은 다음 입고일(월요일 영업이면 월, 아니면 화)로 넘어가
+                    // 오래 묵은 닭을 쓰는 셈이라, 올림 대신 가장 가까운 10kg으로 맞춰 남는 양을 줄인다.
                     { day: '금', need: kgOf('금') + kgOf('토') + kgOf('일'), tight: true }   // 금·토·일 3일치
-                ];
+                ]);
                 // 오늘 밤에 넣을 발주가 맨 위로 오도록 다음 입고일부터 돌린다.
                 // 남은 닭은 '다음 입고분'에서 빼야 하므로 순서가 맞아야 한다.
-                const dowIdx = { '화': 2, '수': 3, '목': 4, '금': 5 };
+                const dowIdx = { '월': 1, '화': 2, '수': 3, '목': 4, '금': 5 };
                 const tdow = new Date().getDay();
                 let sIdx = base.findIndex(p => dowIdx[p.day] > tdow);
                 if (sIdx < 0) sIdx = 0;
@@ -2859,7 +2870,7 @@
                 // 남는 만큼을 다음 입고일에서 깎는다. 재고를 따로 입력받지 않는다.
                 //   남은 닭 = 그날 주문량 − 그날 사용량   (전날 남은 것까지 이어서 굴린다)
                 // 주문 판단에만 10% 여유(BUF)를 얹는다 — 모자라면 그날 장사를 접어야 하므로.
-                // 일요일 마감 뒤 남은 양은 다음 주 화요일로 이어진다 → 주문 패턴이 그대로 반복될
+                // 일요일 마감 뒤 남은 양은 다음 입고일(월 또는 화)로 이어진다 → 주문 패턴이 그대로 반복될
                 // 때까지 한 주를 몇 번 돌려서 안정된 값을 쓴다 (매주 같은 표를 보게 된다).
                 const runWeek = seed => {
                     let l = seed;
@@ -2949,7 +2960,7 @@
                         <tr class="ord-head"><td>입고</td><td>필요량</td><td>주문량</td></tr>
                         ${plan.map(p => `<tr>
                             <td class="ord-day">${p.md}(${p.day})</td>
-                            <td class="ord-need">${p.need.toFixed(1)}kg</td>
+                            <td class="ord-need">${p.need.toFixed(1)}kg${p.est ? ' <span style="color:#aaa;font-size:11px;">(화 평균)</span>' : ''}</td>
                             <td class="ord-kg">${p.order}kg</td>
                         </tr>`).join('')}
                         <tr class="ord-total">
@@ -3142,6 +3153,11 @@
             renderUtilCharts();
             if (mstats && (mstats.heat_wavg || mstats.heat_amount)) {
                 window._hourlyHeat = mstats.heat_wavg || mstats.heat_count_3m;
+                await loadCosts();   // '전체' 평균에서 휴무 요일을 빼려고 (operating_history)
+                if (hourlyDowSel !== 'all') {
+                    const r = window._hourlyHeat[hourlyDowSel];
+                    if (!r || !r.some(v => +v > 0)) hourlyDowSel = 'all';
+                }
                 renderHourlyDowFilter();
                 drawHourlyChart(hourlyDowSel);
             }
@@ -3945,7 +3961,7 @@
             return Math.round((l.hourly || 0) * (l.hours || 0) * cnt * (1 + laborOverheadRate()));
         }
 
-        // 그 달 1일부터 upto까지 지난 영업일 수 (월요일 휴무 기준)
+        // 그 달 1일부터 upto까지 지난 영업일 수 (휴무 요일은 operating_history 기준 — 2026-11-09부터 월요일도 영업)
         function bizDaysElapsed(ym, upto) {
             const y = +ym.substring(0, 4), mo = +ym.substring(5, 7) - 1;
             const last = new Date(y, mo + 1, 0).getDate();
