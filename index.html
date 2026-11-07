@@ -4090,6 +4090,9 @@
             if (l.end && iso > l.end) return false;
             if (dateOverride(iso) === false) return false;
             if (Array.isArray(l.extra_dates) && l.extra_dates.includes(iso)) return true;
+            // 휴무 요일(operating_history)에는 아무도 안 나온다 — 그래서 승혜처럼 월~금 항목 하나로
+            // 월요일 휴무 시절(~2026-11-08)과 월요일 영업(2026-11-09~)을 같이 계산할 수 있다.
+            if (!isBizDay(iso)) return false;
             if (!Array.isArray(l.weekdays)) return true;
             return l.weekdays.includes(new Date(iso + 'T00:00:00').getDay());
         }
